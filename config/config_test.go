@@ -323,9 +323,9 @@ func TestProcessWebhookUsernameRegexSuffixAfterDot(t *testing.T) {
 		t.Fatalf("Validate returned error: %v", err)
 	}
 
-	username := cfg.ProcessWebhookUsername("user.123456789")
-	if username != "7679754426" {
-		t.Fatalf("expected username 7679754426, got %q", username)
+	username := cfg.ProcessWebhookUsername("123.123456789")
+	if username != "123456789" {
+		t.Fatalf("expected username 123456789, got %q", username)
 	}
 }
 
