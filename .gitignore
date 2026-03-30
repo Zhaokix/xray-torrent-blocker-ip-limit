@@ -4,11 +4,13 @@ AGENTS.disabled.md
 IMPLEMENTATION_STATUS.md
 
 # Build outputs
-xray-ip-limit
+/xray-ip-limit
+/xray-ip-limit.exe
 *.exe
 *.dll
 *.so
 *.dylib
+/dist/
 
 # Runtime data
 *.db
