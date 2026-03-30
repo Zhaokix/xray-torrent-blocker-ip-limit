@@ -23,6 +23,8 @@ type Config struct {
 	SendWebhook            bool              `yaml:"send_webhook"`
 	WebhookURL             string            `yaml:"webhook_url"`
 	WebhookTemplate        string            `yaml:"webhook_template"`
+	WebhookTemplateIPLimit string            `yaml:"webhook_template_ip_limit"`
+	WebhookTemplateTorrent string            `yaml:"webhook_template_torrent"`
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
 	webhookUsernameExpr    *regexp.Regexp
@@ -45,11 +47,13 @@ func Default() *Config {
 		SendWebhook:            false,
 		WebhookURL:             "",
 		WebhookTemplate:        `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		WebhookTemplateIPLimit: "",
+		WebhookTemplateTorrent: "",
 		WebhookHeaders:         map[string]string{},
 		WebhookUsernameRegex:   `^(.+)$`,
 		WebhookNotifyUnban:     false,
 		DryRun:                 false,
-		StorageDir:             "/opt/xray-ip-limit",
+		StorageDir:             "/opt/iptblocker",
 	}
 }
 
@@ -67,6 +71,8 @@ type rawConfig struct {
 	SendWebhook            bool              `yaml:"send_webhook"`
 	WebhookURL             string            `yaml:"webhook_url"`
 	WebhookTemplate        string            `yaml:"webhook_template"`
+	WebhookTemplateIPLimit string            `yaml:"webhook_template_ip_limit"`
+	WebhookTemplateTorrent string            `yaml:"webhook_template_torrent"`
 	LegacyWebhookTemplate  string            `yaml:"WebhookTemplate"`
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	LegacyWebhookHeaders   map[string]string `yaml:"WebhookHeaders"`
@@ -130,6 +136,12 @@ func Load(path string) (*Config, error) {
 	} else if raw.LegacyWebhookTemplate != "" {
 		cfg.WebhookTemplate = raw.LegacyWebhookTemplate
 	}
+	if raw.WebhookTemplateIPLimit != "" {
+		cfg.WebhookTemplateIPLimit = raw.WebhookTemplateIPLimit
+	}
+	if raw.WebhookTemplateTorrent != "" {
+		cfg.WebhookTemplateTorrent = raw.WebhookTemplateTorrent
+	}
 	if raw.WebhookHeaders != nil {
 		cfg.WebhookHeaders = raw.WebhookHeaders
 	} else if raw.LegacyWebhookHeaders != nil {
@@ -181,8 +193,10 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(c.WebhookURL) == "" {
 			return fmt.Errorf("webhook_url must not be empty when send_webhook is enabled")
 		}
-		if strings.TrimSpace(c.WebhookTemplate) == "" {
-			return fmt.Errorf("webhook_template must not be empty when send_webhook is enabled")
+		if strings.TrimSpace(c.WebhookTemplate) == "" &&
+			strings.TrimSpace(c.WebhookTemplateIPLimit) == "" &&
+			strings.TrimSpace(c.WebhookTemplateTorrent) == "" {
+			return fmt.Errorf("at least one webhook template must be configured when send_webhook is enabled")
 		}
 	}
 
@@ -206,4 +220,19 @@ func (c *Config) ProcessWebhookUsername(value string) string {
 	}
 
 	return value
+}
+
+func (c *Config) WebhookTemplateForReason(reason string) string {
+	switch reason {
+	case "ip_limit":
+		if strings.TrimSpace(c.WebhookTemplateIPLimit) != "" {
+			return c.WebhookTemplateIPLimit
+		}
+	case "torrent":
+		if strings.TrimSpace(c.WebhookTemplateTorrent) != "" {
+			return c.WebhookTemplateTorrent
+		}
+	}
+
+	return c.WebhookTemplate
 }

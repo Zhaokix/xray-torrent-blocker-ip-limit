@@ -1,4 +1,4 @@
-# Xray IP Limit default configuration
+# Xray Torrent Blocker IP Limit default configuration
 
 # Path to the Xray access log file.
 log_file: "/var/log/xray/access.log"
@@ -31,6 +31,8 @@ ban_mode: "iptables"
 send_webhook: false
 webhook_url: ""
 webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_template_ip_limit: ""
+webhook_template_torrent: ""
 webhook_headers: {}
 webhook_username_regex: "^(.+)$"
 webhook_notify_unban: false
@@ -39,4 +41,4 @@ webhook_notify_unban: false
 dry_run: false
 
 # Directory used for the local SQLite state.
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"

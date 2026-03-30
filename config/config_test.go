@@ -27,10 +27,11 @@ ban_duration: "2h"
 enable_torrent_detection: true
 torrent_tag: "TORRENT"
 ban_mode: "iptables"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 send_webhook: true
 webhook_url: "https://example.com/hook"
 webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_template_torrent: '{"email":"%s","kind":"torrent","ip":"%s","action":"%s","duration":"%s"}'
 webhook_username_regex: "^(.+)$"
 `)
 
@@ -48,6 +49,9 @@ webhook_username_regex: "^(.+)$"
 	if cfg.BanDuration != 2*time.Hour {
 		t.Fatalf("expected ban_duration 2h, got %s", cfg.BanDuration)
 	}
+	if cfg.WebhookTemplateTorrent == "" {
+		t.Fatal("expected torrent webhook template to be loaded")
+	}
 	if !cfg.EnableTorrentDetection {
 		t.Fatal("expected torrent detection to be enabled")
 	}
@@ -62,7 +66,7 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 3
 window: "10m"
 ban_duration: "1h"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 send_webhook: true
 webhook_url: "https://example.com/hook"
 WebhookTemplate: '{"chat_id":"%s","text":"IP %s"}'
@@ -83,7 +87,7 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 3
 window: "bad"
 ban_duration: "1h"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 `)
 
 	if _, err := Load(path); err == nil {
@@ -97,7 +101,7 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 0
 window: "10m"
 ban_duration: "1h"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 `)
 
 	if _, err := Load(path); err == nil {
@@ -111,7 +115,7 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 3
 window: "10m"
 ban_duration: "1h"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 send_webhook: true
 `)
 
@@ -126,7 +130,7 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 3
 window: "10m"
 ban_duration: "1h"
-storage_dir: "/opt/xray-ip-limit"
+storage_dir: "/opt/iptblocker"
 enable_torrent_detection: true
 torrent_tag: ""
 `)
@@ -159,5 +163,26 @@ func TestProcessWebhookUsernameFallsBackToRawValue(t *testing.T) {
 	username := cfg.ProcessWebhookUsername("user.without_numeric_suffix")
 	if username != "user.without_numeric_suffix" {
 		t.Fatalf("expected raw username fallback, got %q", username)
+	}
+}
+
+func TestWebhookTemplateForReasonUsesSpecificTemplate(t *testing.T) {
+	cfg := Default()
+	cfg.WebhookTemplate = `{"type":"default"}`
+	cfg.WebhookTemplateTorrent = `{"type":"torrent"}`
+
+	template := cfg.WebhookTemplateForReason("torrent")
+	if template != `{"type":"torrent"}` {
+		t.Fatalf("expected torrent template, got %q", template)
+	}
+}
+
+func TestWebhookTemplateForReasonFallsBackToDefault(t *testing.T) {
+	cfg := Default()
+	cfg.WebhookTemplate = `{"type":"default"}`
+
+	template := cfg.WebhookTemplateForReason("torrent")
+	if template != `{"type":"default"}` {
+		t.Fatalf("expected default template fallback, got %q", template)
 	}
 }

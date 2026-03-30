@@ -7,6 +7,8 @@ NEXT_STAGE_ROADMAP.md
 # Build outputs
 /xray-ip-limit
 /xray-ip-limit.exe
+/iptblocker
+/iptblocker.exe
 *.exe
 *.dll
 *.so

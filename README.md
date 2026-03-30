@@ -1,6 +1,6 @@
-# Xray IP Limit
+# Xray Torrent Blocker IP Limit
 
-`xray-ip-limit` is a local daemon that watches the Xray access log, tracks unique client IPs per subscription email inside a sliding window, and applies local firewall bans when the configured limit is exceeded. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
+`iptblocker` is a local daemon that watches the Xray access log, tracks unique client IPs per subscription email inside a sliding window, and applies local firewall bans when the configured limit is exceeded. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
 
 ## Current Scope
 
@@ -13,6 +13,19 @@
 
 This repository does not yet implement distributed enforcement or remote ban propagation in the current phase.
 
+## Project Basis
+
+This project was built with ideas and reference materials from:
+
+- [V2IpLimit](https://github.com/houshmand-2005/V2IpLimit) by `houshmand-2005`
+- [xray-torrent-blocker](https://github.com/kutovoys/xray-torrent-blocker) by `kutovoys`
+
+### How This Project Differs
+
+- Compared to `V2IpLimit`, `iptblocker` is focused on a production-safe local daemon flow with persistent SQLite state, explicit firewall reconciliation, dry-run validation, webhook integration, and clearer layering between extraction, detection, enforcement, and notifications.
+- Compared to `xray-torrent-blocker`, `iptblocker` combines IP-limit enforcement and torrent-tag enforcement in one local daemon, while keeping a simpler local-first scope instead of moving immediately into broader distributed enforcement patterns.
+- The current implementation reuses useful architectural ideas from both projects, but keeps its own code structure and avoids legacy patterns such as overly global mutable state.
+
 ## Requirements
 
 - Linux host with Xray access logs enabled
@@ -23,7 +36,7 @@ This repository does not yet implement distributed enforcement or remote ban pro
 
 ```bash
 go mod tidy
-go build -o xray-ip-limit ./cmd/xray-ip-limit/
+go build -o iptblocker ./cmd/xray-ip-limit/
 ```
 
 ## Install
@@ -34,8 +47,8 @@ sudo bash install.sh
 
 The installer:
 
-- copies the binary to `/opt/xray-ip-limit/`
-- creates `/opt/xray-ip-limit/config.yaml` if it does not exist
+- copies the binary to `/opt/iptblocker/`
+- creates `/opt/iptblocker/config.yaml` if it does not exist
 - tries to install `conntrack` when it is missing
 - installs the systemd unit
 - enables the service
@@ -52,7 +65,7 @@ This installer downloads the latest release archive, extracts it to a temporary 
 
 Current default release asset:
 
-- `xray-ip-limit_linux_amd64.tar.gz`
+- `iptblocker_linux_amd64.tar.gz`
 
 ## Configuration
 
@@ -70,6 +83,8 @@ Important fields:
 - `dry_run`: when `true`, no firewall changes are applied
 - `storage_dir`: local SQLite state directory
 - `webhook_username_regex`: regex used to transform the raw subscription identifier before it is inserted into the webhook payload
+- `webhook_template_ip_limit`: optional template override used only for `ip_limit` events
+- `webhook_template_torrent`: optional template override used only for `torrent` events
 
 ### Telegram Webhook Example
 
@@ -94,38 +109,55 @@ torrent_tag: "TORRENT"
 
 The current implementation expects the tagged line to still contain the client address in `from ...` and the subscription identifier in `email: ...`.
 
+### Reason-Specific Webhook Templates
+
+If you want different payloads for subscription sharing and torrent events, keep a generic fallback in `webhook_template` and override per reason:
+
+```yaml
+webhook_template: '{"chat_id":"%s","text":"Action: %s, IP: %s, Duration: %s"}'
+webhook_template_ip_limit: '{"chat_id":"%s","text":"Sharing detected.\nIP: %s\nAction: %s\nBan: %s"}'
+webhook_template_torrent: '{"chat_id":"%s","text":"Torrent traffic detected.\nIP: %s\nAction: %s\nBan: %s"}'
+```
+
+All webhook templates currently receive the same placeholders in this order:
+
+- `%s`: processed username
+- `%s`: client IP
+- `%s`: action
+- `%s`: ban duration
+
 ## Linux Smoke Check
 
 1. Build the binary:
 ```bash
-go build -o xray-ip-limit ./cmd/xray-ip-limit/
+go build -o iptblocker ./cmd/xray-ip-limit/
 ```
 
 2. Copy the default config and enable dry-run first:
 ```bash
-cp config.yaml.default /opt/xray-ip-limit/config.yaml
-sed -i 's/^dry_run: false/dry_run: true/' /opt/xray-ip-limit/config.yaml
+cp config.yaml.default /opt/iptblocker/config.yaml
+sed -i 's/^dry_run: false/dry_run: true/' /opt/iptblocker/config.yaml
 ```
 
 3. Point `log_file` to the real Xray access log.
 
 4. Validate the daemon directly before systemd:
 ```bash
-/opt/xray-ip-limit/xray-ip-limit -config /opt/xray-ip-limit/config.yaml
+/opt/iptblocker/iptblocker -config /opt/iptblocker/config.yaml
 ```
 
 5. If the daemon starts and tails the log correctly, disable dry-run and start the service:
 ```bash
-sed -i 's/^dry_run: true/dry_run: false/' /opt/xray-ip-limit/config.yaml
-systemctl start xray-ip-limit
-journalctl -u xray-ip-limit -f
+sed -i 's/^dry_run: true/dry_run: false/' /opt/iptblocker/config.yaml
+systemctl start iptblocker
+journalctl -u iptblocker -f
 ```
 
 ## Verification Commands
 
 ```bash
-systemctl status xray-ip-limit
-journalctl -u xray-ip-limit -f
+systemctl status iptblocker
+journalctl -u iptblocker -f
 iptables -S XRAY_IP_LIMIT_BLOCKED
 nft list set inet xray_ip_limit banned_ips
 ```

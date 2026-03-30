@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="${REPO:-Zhaokix/xray-torrent-blocker-ip-limit}"
-ASSET_NAME="${ASSET_NAME:-xray-ip-limit_linux_amd64.tar.gz}"
+ASSET_NAME="${ASSET_NAME:-iptblocker_linux_amd64.tar.gz}"
 TMP_DIR="$(mktemp -d)"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
 
@@ -27,5 +27,5 @@ curl -fL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ASSET_NAME}"
 echo "==> Extracting release archive..."
 tar -xzf "${TMP_DIR}/${ASSET_NAME}" -C "$TMP_DIR"
 
-cd "${TMP_DIR}/xray-ip-limit"
+cd "${TMP_DIR}/iptblocker"
 bash ./install.sh

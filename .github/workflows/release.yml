@@ -30,20 +30,19 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "0"
         run: |
-          mkdir -p dist/xray-ip-limit
-          go build -o dist/xray-ip-limit/xray-ip-limit ./cmd/xray-ip-limit/
-          cp config.yaml.default dist/xray-ip-limit/
-          cp install.sh dist/xray-ip-limit/
-          cp xray-ip-limit.service dist/xray-ip-limit/
-          cp README.md dist/xray-ip-limit/
+          mkdir -p dist/iptblocker
+          go build -o dist/iptblocker/iptblocker ./cmd/xray-ip-limit/
+          cp config.yaml.default dist/iptblocker/
+          cp install.sh dist/iptblocker/
+          cp iptblocker.service dist/iptblocker/
+          cp README.md dist/iptblocker/
 
       - name: Create tarball
         run: |
           cd dist
-          tar -czf xray-ip-limit_linux_amd64.tar.gz xray-ip-limit
+          tar -czf iptblocker_linux_amd64.tar.gz iptblocker
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/xray-ip-limit_linux_amd64.tar.gz
-
+          files: dist/iptblocker_linux_amd64.tar.gz

@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "/opt/xray-ip-limit/config.yaml", "path to config file")
+	configPath := flag.String("config", "/opt/iptblocker/config.yaml", "path to config file")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -45,7 +45,7 @@ func main() {
 
 	w := watcher.New(cfg, st, fw)
 
-	slog.Info("xray-ip-limit starting",
+	slog.Info("iptblocker starting",
 		"log_file", cfg.LogFile,
 		"ip_limit", cfg.IPLimit,
 		"window", cfg.Window,

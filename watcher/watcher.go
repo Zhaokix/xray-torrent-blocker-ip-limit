@@ -1,11 +1,8 @@
 package watcher
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/nxadm/tail"
@@ -15,6 +12,7 @@ import (
 	"xray-ip-limit/events"
 	"xray-ip-limit/extractors"
 	"xray-ip-limit/firewall"
+	"xray-ip-limit/notifications/webhook"
 	"xray-ip-limit/storage"
 )
 
@@ -22,7 +20,7 @@ type Watcher struct {
 	cfg             *config.Config
 	storage         *storage.Storage
 	firewall        *firewall.Manager
-	httpClient      *http.Client
+	notifier        *webhook.Client
 	detector        *iplimit.Detector
 	torrentDetector *torrent.Detector
 	bypass          map[string]struct{}
@@ -38,11 +36,16 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 	for _, email := range cfg.BypassEmails {
 		bypassEmails[email] = struct{}{}
 	}
+
+	var notifier *webhook.Client
+	if cfg.SendWebhook && cfg.WebhookURL != "" {
+		notifier = webhook.New(cfg)
+	}
 	return &Watcher{
 		cfg:             cfg,
 		storage:         st,
 		firewall:        fw,
-		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		notifier:        notifier,
 		detector:        iplimit.New(cfg.IPLimit, cfg.Window),
 		torrentDetector: torrent.New(cfg.TorrentTag),
 		bypass:          bypass,
@@ -166,8 +169,8 @@ func (w *Watcher) applyBan(event events.Event) {
 		"expires", event.ExpiresAt.Format(time.RFC3339),
 	)
 
-	if w.cfg.SendWebhook && w.cfg.WebhookURL != "" {
-		go w.sendWebhook(event)
+	if w.notifier != nil {
+		go w.notifier.Notify(event)
 	}
 }
 
@@ -225,8 +228,8 @@ func (w *Watcher) unbanLoop() {
 				"email", event.RawUsername,
 				"processed_username", event.ProcessedUsername,
 			)
-			if w.cfg.SendWebhook && w.cfg.WebhookURL != "" && w.cfg.WebhookNotifyUnban {
-				go w.sendWebhook(event)
+			if w.notifier != nil && w.cfg.WebhookNotifyUnban {
+				go w.notifier.Notify(event)
 			}
 		}
 	}
@@ -248,51 +251,4 @@ func (w *Watcher) cleanupLoop() {
 	for range ticker.C {
 		w.detector.Cleanup(time.Now())
 	}
-}
-
-func (w *Watcher) sendWebhook(event events.Event) {
-	body := fmt.Sprintf(
-		w.cfg.WebhookTemplate,
-		event.ProcessedUsername,
-		event.ClientIP,
-		string(event.Action),
-		event.BanDuration.String(),
-	)
-	req, err := http.NewRequest(http.MethodPost, w.cfg.WebhookURL, bytes.NewBufferString(body))
-	if err != nil {
-		slog.Error("webhook request creation failed", "err", err)
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	for key, value := range w.cfg.WebhookHeaders {
-		req.Header.Set(key, value)
-	}
-
-	resp, err := w.httpClient.Do(req)
-	if err != nil {
-		slog.Error("webhook failed", "err", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		slog.Warn(
-			"webhook returned non-success status",
-			"status", resp.StatusCode,
-			"action", event.Action,
-			"reason", event.Reason,
-			"body", string(responseBody),
-		)
-		return
-	}
-
-	slog.Info(
-		"webhook sent",
-		"status", resp.StatusCode,
-		"action", event.Action,
-		"reason", event.Reason,
-		"username", event.ProcessedUsername,
-	)
 }

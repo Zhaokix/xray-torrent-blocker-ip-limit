@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-INSTALL_DIR="/opt/xray-ip-limit"
-BINARY="xray-ip-limit"
-SERVICE="xray-ip-limit.service"
+INSTALL_DIR="/opt/iptblocker"
+BINARY="iptblocker"
+SERVICE="iptblocker.service"
 CONFIG_PATH="$INSTALL_DIR/config.yaml"
 
 install_conntrack_if_missing() {
@@ -34,7 +34,7 @@ install_conntrack_if_missing() {
     echo "Warning: install conntrack manually to drop existing connections on ban"
 }
 
-echo "==> Installing xray-ip-limit..."
+echo "==> Installing iptblocker..."
 
 if [ "$EUID" -ne 0 ]; then
     echo "Error: please run as root"
@@ -43,7 +43,7 @@ fi
 
 if [ ! -f "$BINARY" ]; then
     echo "Error: binary '$BINARY' not found in current directory"
-    echo "Build it first: go build -o xray-ip-limit ./cmd/xray-ip-limit/"
+    echo "Build it first: go build -o iptblocker ./cmd/xray-ip-limit/"
     exit 1
 fi
 
@@ -72,5 +72,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit config:  $CONFIG_PATH"
 echo "  2. Validate run: $INSTALL_DIR/$BINARY -config $CONFIG_PATH"
-echo "  3. Start:        systemctl start xray-ip-limit"
-echo "  4. Logs:         journalctl -u xray-ip-limit -f"
+echo "  3. Start:        systemctl start iptblocker"
+echo "  4. Logs:         journalctl -u iptblocker -f"
