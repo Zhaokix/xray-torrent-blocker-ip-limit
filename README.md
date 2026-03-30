@@ -42,6 +42,15 @@ Current default release asset:
 
 - `iptblocker_linux_amd64.tar.gz`
 
+## Project Basis
+
+This project was built with ideas and reference materials from:
+
+- [V2IpLimit](https://github.com/houshmand-2005/V2IpLimit) by `houshmand-2005`
+- [xray-torrent-blocker](https://github.com/kutovoys/xray-torrent-blocker) by `kutovoys`
+
+`iptblocker` differs by combining IP-limit enforcement and torrent-tag enforcement in one local-first daemon, keeping persistent SQLite state, explicit reconciliation, dry-run validation, webhook integrations, and an optional SSH-based remote-enforcement path without relying on broad global mutable state.
+
 ## Quick Start
 
 1. Install from the latest GitHub release:
