@@ -2,15 +2,16 @@ package watcher
 
 import (
 	"bytes"
-	"io"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"xray-ip-limit/detectors/iplimit"
 	"github.com/nxadm/tail"
 	"xray-ip-limit/config"
+	"xray-ip-limit/detectors/iplimit"
+	"xray-ip-limit/detectors/torrent"
 	"xray-ip-limit/events"
 	"xray-ip-limit/extractors"
 	"xray-ip-limit/firewall"
@@ -18,13 +19,14 @@ import (
 )
 
 type Watcher struct {
-	cfg          *config.Config
-	storage      *storage.Storage
-	firewall     *firewall.Manager
-	httpClient   *http.Client
-	detector     *iplimit.Detector
-	bypass       map[string]struct{}
-	bypassEmails map[string]struct{}
+	cfg             *config.Config
+	storage         *storage.Storage
+	firewall        *firewall.Manager
+	httpClient      *http.Client
+	detector        *iplimit.Detector
+	torrentDetector *torrent.Detector
+	bypass          map[string]struct{}
+	bypassEmails    map[string]struct{}
 }
 
 func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher {
@@ -37,13 +39,14 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 		bypassEmails[email] = struct{}{}
 	}
 	return &Watcher{
-		cfg:          cfg,
-		storage:      st,
-		firewall:     fw,
-		httpClient:   &http.Client{Timeout: 10 * time.Second},
-		detector:     iplimit.New(cfg.IPLimit, cfg.Window),
-		bypass:       bypass,
-		bypassEmails: bypassEmails,
+		cfg:             cfg,
+		storage:         st,
+		firewall:        fw,
+		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		detector:        iplimit.New(cfg.IPLimit, cfg.Window),
+		torrentDetector: torrent.New(cfg.TorrentTag),
+		bypass:          bypass,
+		bypassEmails:    bypassEmails,
 	}
 }
 
@@ -94,6 +97,29 @@ func (w *Watcher) processLine(line string) {
 	}
 
 	now := time.Now()
+	if w.cfg.EnableTorrentDetection {
+		torrentDecision := w.torrentDetector.Observe(line, entry.Username, entry.ClientIP)
+		if torrentDecision.Matched {
+			slog.Warn("torrent traffic detected",
+				"email", entry.Username,
+				"torrent_tag", torrentDecision.Tag,
+				"banning_ip", torrentDecision.BanningIP,
+			)
+
+			event := events.NewTorrentBanEvent(
+				entry.Username,
+				w.cfg.ProcessWebhookUsername(entry.Username),
+				torrentDecision.BanningIP,
+				w.cfg.LogFile,
+				now,
+				w.cfg.BanDuration,
+			)
+
+			w.applyBan(event)
+			return
+		}
+	}
+
 	decision := w.detector.Observe(entry.Username, entry.ClientIP, now)
 	if !decision.Exceeded {
 		return
@@ -115,12 +141,16 @@ func (w *Watcher) processLine(line string) {
 		w.cfg.BanDuration,
 	)
 
+	w.applyBan(event)
+}
+
+func (w *Watcher) applyBan(event events.Event) {
 	if err := w.firewall.Ban(event.ClientIP); err != nil {
 		slog.Error("ban failed", "ip", event.ClientIP, "err", err)
 		return
 	}
 
-	if err := w.storage.AddBan(event.ClientIP, event.RawUsername, event.ExpiresAt); err != nil {
+	if err := w.storage.AddBan(event.ClientIP, event.RawUsername, event.Reason, event.ExpiresAt); err != nil {
 		slog.Error("storage add ban failed after firewall ban", "ip", event.ClientIP, "err", err)
 		if rollbackErr := w.firewall.Unban(event.ClientIP); rollbackErr != nil {
 			slog.Error("ban rollback failed", "ip", event.ClientIP, "err", rollbackErr)
@@ -161,7 +191,7 @@ func (w *Watcher) restoreBans() error {
 		if err := w.firewall.Ban(b.IP); err != nil {
 			slog.Warn("restore ban failed", "ip", b.IP, "err", err)
 		} else {
-			slog.Info("restored ban", "ip", b.IP, "email", b.Email, "expires", b.ExpiresAt.Format(time.RFC3339))
+			slog.Info("restored ban", "reason", b.Reason, "ip", b.IP, "email", b.Email, "expires", b.ExpiresAt.Format(time.RFC3339))
 		}
 	}
 	return nil
@@ -187,13 +217,7 @@ func (w *Watcher) unbanLoop() {
 				continue
 			}
 
-			event := events.NewIPLimitUnbanEvent(
-				b.Email,
-				w.cfg.ProcessWebhookUsername(b.Email),
-				b.IP,
-				w.cfg.LogFile,
-				time.Now(),
-			)
+			event := w.newUnbanEvent(b)
 
 			slog.Info("unbanned",
 				"reason", event.Reason,
@@ -205,6 +229,16 @@ func (w *Watcher) unbanLoop() {
 				go w.sendWebhook(event)
 			}
 		}
+	}
+}
+
+func (w *Watcher) newUnbanEvent(record storage.BanRecord) events.Event {
+	processedUsername := w.cfg.ProcessWebhookUsername(record.Email)
+	switch record.Reason {
+	case events.ReasonTorrent:
+		return events.NewTorrentUnbanEvent(record.Email, processedUsername, record.IP, w.cfg.LogFile, time.Now())
+	default:
+		return events.NewIPLimitUnbanEvent(record.Email, processedUsername, record.IP, w.cfg.LogFile, time.Now())
 	}
 }
 

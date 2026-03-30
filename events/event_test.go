@@ -50,3 +50,25 @@ func TestNewIPLimitUnbanEvent(t *testing.T) {
 		t.Fatalf("expected zero ban duration, got %s", event.BanDuration)
 	}
 }
+
+func TestNewTorrentBanEvent(t *testing.T) {
+	now := time.Date(2026, 3, 30, 12, 2, 0, 0, time.UTC)
+	event := NewTorrentBanEvent(
+		"torrent@example.com",
+		"torrent@example.com",
+		"203.0.113.11",
+		"/var/log/xray/access.log",
+		now,
+		5*time.Minute,
+	)
+
+	if event.Reason != ReasonTorrent {
+		t.Fatalf("expected reason %q, got %q", ReasonTorrent, event.Reason)
+	}
+	if event.Action != ActionBan {
+		t.Fatalf("expected action %q, got %q", ActionBan, event.Action)
+	}
+	if event.ExpiresAt != now.Add(5*time.Minute) {
+		t.Fatalf("expected expires_at %s, got %s", now.Add(5*time.Minute), event.ExpiresAt)
+	}
+}

@@ -24,6 +24,8 @@ log_file: "/var/log/xray/access.log"
 ip_limit: 5
 window: "15m"
 ban_duration: "2h"
+enable_torrent_detection: true
+torrent_tag: "TORRENT"
 ban_mode: "iptables"
 storage_dir: "/opt/xray-ip-limit"
 send_webhook: true
@@ -45,6 +47,12 @@ webhook_username_regex: "^(.+)$"
 	}
 	if cfg.BanDuration != 2*time.Hour {
 		t.Fatalf("expected ban_duration 2h, got %s", cfg.BanDuration)
+	}
+	if !cfg.EnableTorrentDetection {
+		t.Fatal("expected torrent detection to be enabled")
+	}
+	if cfg.TorrentTag != "TORRENT" {
+		t.Fatalf("expected torrent_tag TORRENT, got %q", cfg.TorrentTag)
 	}
 }
 
@@ -109,6 +117,22 @@ send_webhook: true
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected webhook validation error")
+	}
+}
+
+func TestLoadRejectsEmptyTorrentTagWhenTorrentDetectionEnabled(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/xray-ip-limit"
+enable_torrent_detection: true
+torrent_tag: ""
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected torrent_tag validation error")
 	}
 }
 

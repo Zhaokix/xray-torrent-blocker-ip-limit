@@ -42,9 +42,37 @@ func NewIPLimitBanEvent(rawUsername, processedUsername, clientIP, source string,
 	}
 }
 
+func NewTorrentBanEvent(rawUsername, processedUsername, clientIP, source string, detectedAt time.Time, banDuration time.Duration) Event {
+	return Event{
+		Reason:            ReasonTorrent,
+		Action:            ActionBan,
+		RawUsername:       rawUsername,
+		ProcessedUsername: processedUsername,
+		ClientIP:          clientIP,
+		Source:            source,
+		DetectedAt:        detectedAt,
+		BanDuration:       banDuration,
+		ExpiresAt:         detectedAt.Add(banDuration),
+	}
+}
+
 func NewIPLimitUnbanEvent(rawUsername, processedUsername, clientIP, source string, detectedAt time.Time) Event {
 	return Event{
 		Reason:            ReasonIPLimit,
+		Action:            ActionUnban,
+		RawUsername:       rawUsername,
+		ProcessedUsername: processedUsername,
+		ClientIP:          clientIP,
+		Source:            source,
+		DetectedAt:        detectedAt,
+		BanDuration:       0,
+		ExpiresAt:         detectedAt,
+	}
+}
+
+func NewTorrentUnbanEvent(rawUsername, processedUsername, clientIP, source string, detectedAt time.Time) Event {
+	return Event{
+		Reason:            ReasonTorrent,
 		Action:            ActionUnban,
 		RawUsername:       rawUsername,
 		ProcessedUsername: processedUsername,

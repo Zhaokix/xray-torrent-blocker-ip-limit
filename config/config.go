@@ -11,63 +11,69 @@ import (
 )
 
 type Config struct {
-	LogFile              string            `yaml:"log_file"`
-	IPLimit              int               `yaml:"ip_limit"`
-	Window               time.Duration     `yaml:"window"`
-	BanDuration          time.Duration     `yaml:"ban_duration"`
-	BypassIPs            []string          `yaml:"bypass_ips"`
-	BypassEmails         []string          `yaml:"bypass_emails"`
-	BanMode              string            `yaml:"ban_mode"`
-	SendWebhook          bool              `yaml:"send_webhook"`
-	WebhookURL           string            `yaml:"webhook_url"`
-	WebhookTemplate      string            `yaml:"webhook_template"`
-	WebhookHeaders       map[string]string `yaml:"webhook_headers"`
-	WebhookUsernameRegex string            `yaml:"webhook_username_regex"`
-	webhookUsernameExpr  *regexp.Regexp
-	WebhookNotifyUnban   bool   `yaml:"webhook_notify_unban"`
-	DryRun               bool   `yaml:"dry_run"`
-	StorageDir           string `yaml:"storage_dir"`
+	LogFile                string            `yaml:"log_file"`
+	IPLimit                int               `yaml:"ip_limit"`
+	Window                 time.Duration     `yaml:"window"`
+	BanDuration            time.Duration     `yaml:"ban_duration"`
+	EnableTorrentDetection bool              `yaml:"enable_torrent_detection"`
+	TorrentTag             string            `yaml:"torrent_tag"`
+	BypassIPs              []string          `yaml:"bypass_ips"`
+	BypassEmails           []string          `yaml:"bypass_emails"`
+	BanMode                string            `yaml:"ban_mode"`
+	SendWebhook            bool              `yaml:"send_webhook"`
+	WebhookURL             string            `yaml:"webhook_url"`
+	WebhookTemplate        string            `yaml:"webhook_template"`
+	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
+	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
+	webhookUsernameExpr    *regexp.Regexp
+	WebhookNotifyUnban     bool   `yaml:"webhook_notify_unban"`
+	DryRun                 bool   `yaml:"dry_run"`
+	StorageDir             string `yaml:"storage_dir"`
 }
 
 func Default() *Config {
 	return &Config{
-		LogFile:              "/var/log/xray/access.log",
-		IPLimit:              3,
-		Window:               10 * time.Minute,
-		BanDuration:          60 * time.Minute,
-		BypassIPs:            []string{"127.0.0.1", "::1"},
-		BypassEmails:         []string{},
-		BanMode:              "iptables",
-		SendWebhook:          false,
-		WebhookURL:           "",
-		WebhookTemplate:      `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
-		WebhookHeaders:       map[string]string{},
-		WebhookUsernameRegex: `^(.+)$`,
-		WebhookNotifyUnban: false,
-		DryRun:             false,
-		StorageDir:         "/opt/xray-ip-limit",
+		LogFile:                "/var/log/xray/access.log",
+		IPLimit:                3,
+		Window:                 10 * time.Minute,
+		BanDuration:            60 * time.Minute,
+		EnableTorrentDetection: false,
+		TorrentTag:             "TORRENT",
+		BypassIPs:              []string{"127.0.0.1", "::1"},
+		BypassEmails:           []string{},
+		BanMode:                "iptables",
+		SendWebhook:            false,
+		WebhookURL:             "",
+		WebhookTemplate:        `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		WebhookHeaders:         map[string]string{},
+		WebhookUsernameRegex:   `^(.+)$`,
+		WebhookNotifyUnban:     false,
+		DryRun:                 false,
+		StorageDir:             "/opt/xray-ip-limit",
 	}
 }
 
 // rawConfig keeps duration fields as strings so the loader can validate them explicitly.
 type rawConfig struct {
-	LogFile               string            `yaml:"log_file"`
-	IPLimit               *int              `yaml:"ip_limit"`
-	Window                string            `yaml:"window"`
-	BanDuration           string            `yaml:"ban_duration"`
-	BypassIPs             []string          `yaml:"bypass_ips"`
-	BypassEmails          []string          `yaml:"bypass_emails"`
-	BanMode               string            `yaml:"ban_mode"`
-	SendWebhook           bool              `yaml:"send_webhook"`
-	WebhookURL            string            `yaml:"webhook_url"`
-	WebhookTemplate       string            `yaml:"webhook_template"`
-	LegacyWebhookTemplate string `yaml:"WebhookTemplate"`
-	WebhookHeaders        map[string]string `yaml:"webhook_headers"`
-	LegacyWebhookHeaders map[string]string `yaml:"WebhookHeaders"`
-	WebhookUsernameRegex string            `yaml:"webhook_username_regex"`
-	WebhookNotifyUnban   bool              `yaml:"webhook_notify_unban"`
-	DryRun               bool              `yaml:"dry_run"`
-	StorageDir           string            `yaml:"storage_dir"`
+	LogFile                string            `yaml:"log_file"`
+	IPLimit                *int              `yaml:"ip_limit"`
+	Window                 string            `yaml:"window"`
+	BanDuration            string            `yaml:"ban_duration"`
+	EnableTorrentDetection bool              `yaml:"enable_torrent_detection"`
+	TorrentTag             *string           `yaml:"torrent_tag"`
+	BypassIPs              []string          `yaml:"bypass_ips"`
+	BypassEmails           []string          `yaml:"bypass_emails"`
+	BanMode                string            `yaml:"ban_mode"`
+	SendWebhook            bool              `yaml:"send_webhook"`
+	WebhookURL             string            `yaml:"webhook_url"`
+	WebhookTemplate        string            `yaml:"webhook_template"`
+	LegacyWebhookTemplate  string            `yaml:"WebhookTemplate"`
+	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
+	LegacyWebhookHeaders   map[string]string `yaml:"WebhookHeaders"`
+	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
+	WebhookNotifyUnban     bool              `yaml:"webhook_notify_unban"`
+	DryRun                 bool              `yaml:"dry_run"`
+	StorageDir             string            `yaml:"storage_dir"`
 }
 
 func Load(path string) (*Config, error) {
@@ -101,6 +107,10 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("parse ban_duration: %w", err)
 		}
 		cfg.BanDuration = d
+	}
+	cfg.EnableTorrentDetection = raw.EnableTorrentDetection
+	if raw.TorrentTag != nil {
+		cfg.TorrentTag = *raw.TorrentTag
 	}
 	if raw.BypassIPs != nil {
 		cfg.BypassIPs = raw.BypassIPs
@@ -153,6 +163,9 @@ func (c *Config) Validate() error {
 	}
 	if c.BanDuration < 0 {
 		return fmt.Errorf("ban_duration must not be negative")
+	}
+	if c.EnableTorrentDetection && strings.TrimSpace(c.TorrentTag) == "" {
+		return fmt.Errorf("torrent_tag must not be empty when enable_torrent_detection is enabled")
 	}
 	if strings.TrimSpace(c.StorageDir) == "" {
 		return fmt.Errorf("storage_dir must not be empty")

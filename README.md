@@ -1,11 +1,12 @@
 # Xray IP Limit
 
-`xray-ip-limit` is a local daemon that watches the Xray access log, tracks unique client IPs per subscription email inside a sliding window, and applies local firewall bans when the configured limit is exceeded.
+`xray-ip-limit` is a local daemon that watches the Xray access log, tracks unique client IPs per subscription email inside a sliding window, and applies local firewall bans when the configured limit is exceeded. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
 
 ## Current Scope
 
 - Local daemon only
 - Local firewall enforcement through `iptables` or `nftables`
+- Optional torrent-tag based enforcement from Xray access logs
 - Persistent local ban state in SQLite
 - Optional webhook notifications
 - Dry-run mode for safe validation
@@ -63,6 +64,8 @@ Important fields:
 - `ip_limit`: max unique IPs allowed per email within the window
 - `window`: sliding duration used for counting unique IPs
 - `ban_duration`: local ban duration
+- `enable_torrent_detection`: enable torrent-triggered bans from tagged Xray log lines
+- `torrent_tag`: string marker that identifies torrent traffic in the log, typically an Xray `outboundTag`
 - `ban_mode`: `iptables`, `nftables`, or `nft`
 - `dry_run`: when `true`, no firewall changes are applied
 - `storage_dir`: local SQLite state directory
@@ -79,6 +82,17 @@ webhook_template: '{"chat_id":"%s","text":"⚠️ Subscription sharing detected.
 webhook_username_regex: '^\d+\.(\d+)$'
 webhook_notify_unban: false
 ```
+
+### Torrent Tag Detection Example
+
+If you already route bittorrent traffic in Xray to a dedicated outbound tag such as `TORRENT`, enable torrent detection like this:
+
+```yaml
+enable_torrent_detection: true
+torrent_tag: "TORRENT"
+```
+
+The current implementation expects the tagged line to still contain the client address in `from ...` and the subscription identifier in `email: ...`.
 
 ## Linux Smoke Check
 

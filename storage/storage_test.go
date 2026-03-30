@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"xray-ip-limit/events"
 )
 
 func newTestStorage(t *testing.T) *Storage {
@@ -44,7 +46,7 @@ func TestAddBanAndIsBanned(t *testing.T) {
 	st := newTestStorage(t)
 
 	expiresAt := time.Now().Add(5 * time.Minute)
-	if err := st.AddBan("203.0.113.10", "user@example.com", expiresAt); err != nil {
+	if err := st.AddBan("203.0.113.10", "user@example.com", events.ReasonIPLimit, expiresAt); err != nil {
 		t.Fatalf("AddBan returned error: %v", err)
 	}
 
@@ -56,10 +58,10 @@ func TestAddBanAndIsBanned(t *testing.T) {
 func TestActiveAndExpiredBans(t *testing.T) {
 	st := newTestStorage(t)
 
-	if err := st.AddBan("203.0.113.11", "active@example.com", time.Now().Add(5*time.Minute)); err != nil {
+	if err := st.AddBan("203.0.113.11", "active@example.com", events.ReasonTorrent, time.Now().Add(5*time.Minute)); err != nil {
 		t.Fatalf("AddBan active returned error: %v", err)
 	}
-	if err := st.AddBan("203.0.113.12", "expired@example.com", time.Now().Add(-5*time.Minute)); err != nil {
+	if err := st.AddBan("203.0.113.12", "expired@example.com", events.ReasonIPLimit, time.Now().Add(-5*time.Minute)); err != nil {
 		t.Fatalf("AddBan expired returned error: %v", err)
 	}
 
@@ -69,6 +71,9 @@ func TestActiveAndExpiredBans(t *testing.T) {
 	}
 	if len(active) != 1 || active[0].IP != "203.0.113.11" {
 		t.Fatalf("expected one active ban for 203.0.113.11, got %+v", active)
+	}
+	if active[0].Reason != events.ReasonTorrent {
+		t.Fatalf("expected active reason torrent, got %q", active[0].Reason)
 	}
 
 	expired, err := st.ExpiredBans()
@@ -83,7 +88,7 @@ func TestActiveAndExpiredBans(t *testing.T) {
 func TestRemoveBan(t *testing.T) {
 	st := newTestStorage(t)
 
-	if err := st.AddBan("203.0.113.13", "remove@example.com", time.Now().Add(5*time.Minute)); err != nil {
+	if err := st.AddBan("203.0.113.13", "remove@example.com", events.ReasonIPLimit, time.Now().Add(5*time.Minute)); err != nil {
 		t.Fatalf("AddBan returned error: %v", err)
 	}
 	if err := st.RemoveBan("203.0.113.13"); err != nil {

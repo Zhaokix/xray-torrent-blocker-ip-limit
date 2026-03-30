@@ -12,6 +12,10 @@ window: "10m"
 # Ban duration. Use "0s" for an immediate expire, or a positive duration such as "1h".
 ban_duration: "1h"
 
+# Optional torrent detection based on an Xray log tag, for example an outbound tag set by a bittorrent routing rule.
+enable_torrent_detection: false
+torrent_tag: "TORRENT"
+
 # IP addresses that must never be banned.
 bypass_ips:
   - "127.0.0.1"

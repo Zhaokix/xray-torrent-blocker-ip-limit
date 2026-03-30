@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"xray-ip-limit/events"
 
 	_ "modernc.org/sqlite"
 )
@@ -12,6 +15,7 @@ import (
 type BanRecord struct {
 	IP        string
 	Email     string
+	Reason    events.Reason
 	BannedAt  time.Time
 	ExpiresAt time.Time
 }
@@ -30,6 +34,7 @@ func New(dir string) (*Storage, error) {
 		CREATE TABLE IF NOT EXISTS bans (
 			ip         TEXT PRIMARY KEY,
 			email      TEXT NOT NULL,
+			reason     TEXT NOT NULL DEFAULT 'ip_limit',
 			banned_at  INTEGER NOT NULL,
 			expires_at INTEGER NOT NULL
 		)
@@ -37,13 +42,18 @@ func New(dir string) (*Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create table: %w", err)
 	}
+	if _, err := db.Exec(`ALTER TABLE bans ADD COLUMN reason TEXT NOT NULL DEFAULT 'ip_limit'`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("migrate bans table: %w", err)
+		}
+	}
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) AddBan(ip, email string, expiresAt time.Time) error {
+func (s *Storage) AddBan(ip, email string, reason events.Reason, expiresAt time.Time) error {
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO bans (ip, email, banned_at, expires_at) VALUES (?, ?, ?, ?)`,
-		ip, email, time.Now().Unix(), expiresAt.Unix(),
+		`INSERT OR REPLACE INTO bans (ip, email, reason, banned_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+		ip, email, string(reason), time.Now().Unix(), expiresAt.Unix(),
 	)
 	return err
 }
@@ -68,7 +78,7 @@ func (s *Storage) IsBanned(ip string) bool {
 
 func (s *Storage) ActiveBans() ([]BanRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT ip, email, banned_at, expires_at FROM bans WHERE expires_at > ?`,
+		`SELECT ip, email, reason, banned_at, expires_at FROM bans WHERE expires_at > ?`,
 		time.Now().Unix(),
 	)
 	if err != nil {
@@ -79,10 +89,12 @@ func (s *Storage) ActiveBans() ([]BanRecord, error) {
 	var bans []BanRecord
 	for rows.Next() {
 		var b BanRecord
+		var reason string
 		var bannedAt, expiresAt int64
-		if err := rows.Scan(&b.IP, &b.Email, &bannedAt, &expiresAt); err != nil {
+		if err := rows.Scan(&b.IP, &b.Email, &reason, &bannedAt, &expiresAt); err != nil {
 			continue
 		}
+		b.Reason = events.Reason(reason)
 		b.BannedAt = time.Unix(bannedAt, 0)
 		b.ExpiresAt = time.Unix(expiresAt, 0)
 		bans = append(bans, b)
@@ -95,7 +107,7 @@ func (s *Storage) ActiveBans() ([]BanRecord, error) {
 
 func (s *Storage) ExpiredBans() ([]BanRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT ip, email, banned_at, expires_at FROM bans WHERE expires_at <= ?`,
+		`SELECT ip, email, reason, banned_at, expires_at FROM bans WHERE expires_at <= ?`,
 		time.Now().Unix(),
 	)
 	if err != nil {
@@ -106,10 +118,12 @@ func (s *Storage) ExpiredBans() ([]BanRecord, error) {
 	var bans []BanRecord
 	for rows.Next() {
 		var b BanRecord
+		var reason string
 		var bannedAt, expiresAt int64
-		if err := rows.Scan(&b.IP, &b.Email, &bannedAt, &expiresAt); err != nil {
+		if err := rows.Scan(&b.IP, &b.Email, &reason, &bannedAt, &expiresAt); err != nil {
 			continue
 		}
+		b.Reason = events.Reason(reason)
 		b.BannedAt = time.Unix(bannedAt, 0)
 		b.ExpiresAt = time.Unix(expiresAt, 0)
 		bans = append(bans, b)
