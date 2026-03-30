@@ -5,15 +5,14 @@ import (
 	"io"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/netip"
-	"strings"
-	"sync"
 	"time"
 
+	"xray-ip-limit/detectors/iplimit"
 	"github.com/nxadm/tail"
 	"xray-ip-limit/config"
+	"xray-ip-limit/events"
+	"xray-ip-limit/extractors"
 	"xray-ip-limit/firewall"
 	"xray-ip-limit/storage"
 )
@@ -23,8 +22,7 @@ type Watcher struct {
 	storage      *storage.Storage
 	firewall     *firewall.Manager
 	httpClient   *http.Client
-	mu           sync.Mutex
-	windows      map[string]map[string]time.Time
+	detector     *iplimit.Detector
 	bypass       map[string]struct{}
 	bypassEmails map[string]struct{}
 }
@@ -43,7 +41,7 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 		storage:      st,
 		firewall:     fw,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
-		windows:      make(map[string]map[string]time.Time),
+		detector:     iplimit.New(cfg.IPLimit, cfg.Window),
 		bypass:       bypass,
 		bypassEmails: bypassEmails,
 	}
@@ -79,113 +77,67 @@ func (w *Watcher) Run() error {
 	return nil
 }
 
-// parseLine extracts the client IP and email from an Xray access log line.
-// It expects a "from " token followed by host:port and returns an empty email when absent.
-func parseLine(line string) (ip, email string, ok bool) {
-	fromIdx := strings.Index(line, "from ")
-	if fromIdx == -1 {
-		return "", "", false
-	}
-
-	ipStart := fromIdx + len("from ")
-	if ipStart >= len(line) {
-		return "", "", false
-	}
-
-	addrToken, ok := extractAddressToken(line[ipStart:])
-	if !ok {
-		return "", "", false
-	}
-
-	ip, ok = parseClientIP(addrToken)
-	if !ok {
-		return "", "", false
-	}
-
-	emailIdx := strings.Index(line, "email: ")
-	if emailIdx == -1 {
-		return ip, "", true
-	}
-
-	emailStart := emailIdx + len("email: ")
-	if emailStart >= len(line) {
-		return ip, "", true
-	}
-
-	emailFields := strings.Fields(line[emailStart:])
-	if len(emailFields) == 0 {
-		return ip, "", true
-	}
-
-	return ip, emailFields[0], true
-}
-
 func (w *Watcher) processLine(line string) {
-	ip, email, ok := parseLine(line)
-	if !ok || email == "" {
+	entry, ok := extractors.ParseXrayAccessLogLine(line)
+	if !ok || entry.Username == "" {
 		return
 	}
 
-	if _, ok := w.bypass[ip]; ok {
+	if _, ok := w.bypass[entry.ClientIP]; ok {
 		return
 	}
-	if _, ok := w.bypassEmails[email]; ok {
+	if _, ok := w.bypassEmails[entry.Username]; ok {
 		return
 	}
-	if w.storage.IsBanned(ip) {
+	if w.storage.IsBanned(entry.ClientIP) {
 		return
 	}
 
-	w.mu.Lock()
 	now := time.Now()
-	window := w.cfg.Window
-
-	if w.windows[email] == nil {
-		w.windows[email] = make(map[string]time.Time)
-	}
-
-	w.windows[email][ip] = now
-
-	for existingIP, lastSeen := range w.windows[email] {
-		if now.Sub(lastSeen) > window {
-			delete(w.windows[email], existingIP)
-		}
-	}
-
-	uniqueIPs := len(w.windows[email])
-	if uniqueIPs <= w.cfg.IPLimit {
-		w.mu.Unlock()
+	decision := w.detector.Observe(entry.Username, entry.ClientIP, now)
+	if !decision.Exceeded {
 		return
 	}
-
-	delete(w.windows[email], ip)
-	w.mu.Unlock()
 
 	slog.Warn("ip limit exceeded",
-		"email", email,
-		"unique_ips", uniqueIPs,
+		"email", entry.Username,
+		"unique_ips", decision.UniqueIPs,
 		"limit", w.cfg.IPLimit,
-		"banning_ip", ip,
+		"banning_ip", decision.BanningIP,
 	)
 
-	expiresAt := now.Add(w.cfg.BanDuration)
-	if err := w.firewall.Ban(ip); err != nil {
-		slog.Error("ban failed", "ip", ip, "err", err)
+	event := events.NewIPLimitBanEvent(
+		entry.Username,
+		w.cfg.ProcessWebhookUsername(entry.Username),
+		decision.BanningIP,
+		w.cfg.LogFile,
+		now,
+		w.cfg.BanDuration,
+	)
+
+	if err := w.firewall.Ban(event.ClientIP); err != nil {
+		slog.Error("ban failed", "ip", event.ClientIP, "err", err)
 		return
 	}
 
-	if err := w.storage.AddBan(ip, email, expiresAt); err != nil {
-		slog.Error("storage add ban failed after firewall ban", "ip", ip, "err", err)
-		if rollbackErr := w.firewall.Unban(ip); rollbackErr != nil {
-			slog.Error("ban rollback failed", "ip", ip, "err", rollbackErr)
+	if err := w.storage.AddBan(event.ClientIP, event.RawUsername, event.ExpiresAt); err != nil {
+		slog.Error("storage add ban failed after firewall ban", "ip", event.ClientIP, "err", err)
+		if rollbackErr := w.firewall.Unban(event.ClientIP); rollbackErr != nil {
+			slog.Error("ban rollback failed", "ip", event.ClientIP, "err", rollbackErr)
 		}
 		return
 	}
 
-	slog.Info("banned", "ip", ip, "email", email, "expires", expiresAt.Format(time.RFC3339))
+	slog.Info("banned",
+		"reason", event.Reason,
+		"ip", event.ClientIP,
+		"email", event.RawUsername,
+		"processed_username", event.ProcessedUsername,
+		"expires", event.ExpiresAt.Format(time.RFC3339),
+	)
 
 	if w.cfg.SendWebhook && w.cfg.WebhookURL != "" {
-		go w.sendWebhook(email, ip, "ban", w.cfg.BanDuration.String())
+		go w.sendWebhook(event)
 	}
 }
 
@@ -235,9 +187,22 @@ func (w *Watcher) unbanLoop() {
 				continue
 			}
 
-			slog.Info("unbanned", "ip", b.IP, "email", b.Email)
+			event := events.NewIPLimitUnbanEvent(
+				b.Email,
+				w.cfg.ProcessWebhookUsername(b.Email),
+				b.IP,
+				w.cfg.LogFile,
+				time.Now(),
+			)
+
+			slog.Info("unbanned",
+				"reason", event.Reason,
+				"ip", event.ClientIP,
+				"email", event.RawUsername,
+				"processed_username", event.ProcessedUsername,
+			)
 			if w.cfg.SendWebhook && w.cfg.WebhookURL != "" && w.cfg.WebhookNotifyUnban {
-				go w.sendWebhook(b.Email, b.IP, "unban", "0s")
+				go w.sendWebhook(event)
 			}
 		}
 	}
@@ -247,26 +212,18 @@ func (w *Watcher) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	for range ticker.C {
-		w.mu.Lock()
-		now := time.Now()
-		window := w.cfg.Window
-		for email, ips := range w.windows {
-			for ip, lastSeen := range ips {
-				if now.Sub(lastSeen) > window {
-					delete(ips, ip)
-				}
-			}
-			if len(ips) == 0 {
-				delete(w.windows, email)
-			}
-		}
-		w.mu.Unlock()
+		w.detector.Cleanup(time.Now())
 	}
 }
 
-func (w *Watcher) sendWebhook(email, ip, action string, duration string) {
-	username := w.cfg.ProcessWebhookUsername(email)
-	body := fmt.Sprintf(w.cfg.WebhookTemplate, username, ip, action, duration)
+func (w *Watcher) sendWebhook(event events.Event) {
+	body := fmt.Sprintf(
+		w.cfg.WebhookTemplate,
+		event.ProcessedUsername,
+		event.ClientIP,
+		string(event.Action),
+		event.BanDuration.String(),
+	)
 	req, err := http.NewRequest(http.MethodPost, w.cfg.WebhookURL, bytes.NewBufferString(body))
 	if err != nil {
 		slog.Error("webhook request creation failed", "err", err)
@@ -287,48 +244,21 @@ func (w *Watcher) sendWebhook(email, ip, action string, duration string) {
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		slog.Warn("webhook returned non-success status", "status", resp.StatusCode, "action", action, "body", string(responseBody))
+		slog.Warn(
+			"webhook returned non-success status",
+			"status", resp.StatusCode,
+			"action", event.Action,
+			"reason", event.Reason,
+			"body", string(responseBody),
+		)
 		return
 	}
 
-	slog.Info("webhook sent", "status", resp.StatusCode, "action", action, "username", username)
-}
-
-func extractAddressToken(value string) (string, bool) {
-	fields := strings.Fields(value)
-	if len(fields) == 0 {
-		return "", false
-	}
-
-	token := fields[0]
-	switch {
-	case strings.HasPrefix(token, "tcp:"):
-		return strings.TrimPrefix(token, "tcp:"), true
-	case strings.HasPrefix(token, "udp:"):
-		return strings.TrimPrefix(token, "udp:"), true
-	default:
-		return token, true
-	}
-}
-
-func parseClientIP(token string) (string, bool) {
-	if strings.HasSuffix(token, ":") {
-		return "", false
-	}
-
-	host, _, err := net.SplitHostPort(token)
-	if err != nil {
-		addr, parseErr := netip.ParseAddr(token)
-		if parseErr != nil {
-			return "", false
-		}
-		return addr.Unmap().String(), true
-	}
-
-	addr, err := netip.ParseAddr(host)
-	if err != nil {
-		return "", false
-	}
-
-	return addr.Unmap().String(), true
+	slog.Info(
+		"webhook sent",
+		"status", resp.StatusCode,
+		"action", event.Action,
+		"reason", event.Reason,
+		"username", event.ProcessedUsername,
+	)
 }
