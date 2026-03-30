@@ -153,7 +153,8 @@ func (w *Watcher) applyBan(event events.Event) {
 		return
 	}
 
-	if err := w.storage.AddBan(event.ClientIP, event.RawUsername, event.Reason, event.ExpiresAt); err != nil {
+	event.EnforcedAt = time.Now()
+	if err := w.storage.AddBan(event); err != nil {
 		slog.Error("storage add ban failed after firewall ban", "ip", event.ClientIP, "err", err)
 		if rollbackErr := w.firewall.Unban(event.ClientIP); rollbackErr != nil {
 			slog.Error("ban rollback failed", "ip", event.ClientIP, "err", rollbackErr)
@@ -187,14 +188,14 @@ func (w *Watcher) restoreBans() error {
 	}
 	for _, b := range bans {
 		if _, exists := currentlyBlocked[b.IP]; exists {
-			slog.Info("ban already present in firewall", "ip", b.IP, "email", b.Email, "expires", b.ExpiresAt.Format(time.RFC3339))
+			slog.Info("ban already present in firewall", "reason", b.Reason, "ip", b.IP, "email", b.Email, "processed_username", b.ProcessedUsername, "source", b.Source, "expires", b.ExpiresAt.Format(time.RFC3339))
 			continue
 		}
 
 		if err := w.firewall.Ban(b.IP); err != nil {
 			slog.Warn("restore ban failed", "ip", b.IP, "err", err)
 		} else {
-			slog.Info("restored ban", "reason", b.Reason, "ip", b.IP, "email", b.Email, "expires", b.ExpiresAt.Format(time.RFC3339))
+			slog.Info("restored ban", "reason", b.Reason, "ip", b.IP, "email", b.Email, "processed_username", b.ProcessedUsername, "source", b.Source, "expires", b.ExpiresAt.Format(time.RFC3339))
 		}
 	}
 	return nil
@@ -236,12 +237,15 @@ func (w *Watcher) unbanLoop() {
 }
 
 func (w *Watcher) newUnbanEvent(record storage.BanRecord) events.Event {
-	processedUsername := w.cfg.ProcessWebhookUsername(record.Email)
+	processedUsername := record.ProcessedUsername
+	if processedUsername == "" {
+		processedUsername = w.cfg.ProcessWebhookUsername(record.Email)
+	}
 	switch record.Reason {
 	case events.ReasonTorrent:
-		return events.NewTorrentUnbanEvent(record.Email, processedUsername, record.IP, w.cfg.LogFile, time.Now())
+		return events.NewTorrentUnbanEvent(record.Email, processedUsername, record.IP, record.Source, time.Now())
 	default:
-		return events.NewIPLimitUnbanEvent(record.Email, processedUsername, record.IP, w.cfg.LogFile, time.Now())
+		return events.NewIPLimitUnbanEvent(record.Email, processedUsername, record.IP, record.Source, time.Now())
 	}
 }
 

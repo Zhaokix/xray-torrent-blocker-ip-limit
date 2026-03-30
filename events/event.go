@@ -24,6 +24,7 @@ type Event struct {
 	ClientIP          string
 	Source            string
 	DetectedAt        time.Time
+	EnforcedAt        time.Time
 	BanDuration       time.Duration
 	ExpiresAt         time.Time
 }

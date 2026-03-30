@@ -96,4 +96,13 @@ func TestProcessLineBansTorrentTaggedIPImmediately(t *testing.T) {
 	if active[0].Reason != "torrent" {
 		t.Fatalf("expected torrent reason, got %q", active[0].Reason)
 	}
+	if active[0].ProcessedUsername != email {
+		t.Fatalf("expected processed username %q, got %q", email, active[0].ProcessedUsername)
+	}
+	if active[0].Source != cfg.LogFile {
+		t.Fatalf("expected source %q, got %q", cfg.LogFile, active[0].Source)
+	}
+	if active[0].DetectedAt.IsZero() || active[0].EnforcedAt.IsZero() {
+		t.Fatal("expected detected_at and enforced_at to be stored")
+	}
 }
