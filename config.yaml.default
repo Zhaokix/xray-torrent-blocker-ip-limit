@@ -1,0 +1,36 @@
+# Xray IP Limit default configuration
+
+# Path to the Xray access log file.
+log_file: "/var/log/xray/access.log"
+
+# Maximum number of unique client IPs allowed for one subscription key within the window.
+ip_limit: 3
+
+# Sliding time window used for unique IP counting.
+window: "10m"
+
+# Ban duration. Use "0s" for an immediate expire, or a positive duration such as "1h".
+ban_duration: "1h"
+
+# IP addresses that must never be banned.
+bypass_ips:
+  - "127.0.0.1"
+  - "::1"
+
+# Subscription emails that must never be banned.
+bypass_emails: []
+
+# Firewall backend used for local bans: iptables, nftables, or nft.
+ban_mode: "iptables"
+
+# Optional webhook notification settings.
+send_webhook: false
+webhook_url: ""
+webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_notify_unban: false
+
+# Dry-run mode logs ban and unban actions without touching the firewall.
+dry_run: false
+
+# Directory used for the local SQLite state.
+storage_dir: "/opt/xray-ip-limit"

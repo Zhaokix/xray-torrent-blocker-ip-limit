@@ -1,0 +1,22 @@
+AGENTS.disabled.md
+**/docs
+**/xray-torrent-blocker-main
+
+# Build outputs
+xray-ip-limit
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Runtime data
+*.db
+iplimit.db
+
+# Go coverage and test artifacts
+*.out
+coverage.*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

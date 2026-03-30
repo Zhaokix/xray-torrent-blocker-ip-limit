@@ -1,0 +1,157 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	LogFile            string        `yaml:"log_file"`
+	IPLimit            int           `yaml:"ip_limit"`
+	Window             time.Duration `yaml:"window"`
+	BanDuration        time.Duration `yaml:"ban_duration"`
+	BypassIPs          []string      `yaml:"bypass_ips"`
+	BypassEmails       []string      `yaml:"bypass_emails"`
+	BanMode            string        `yaml:"ban_mode"`
+	SendWebhook        bool          `yaml:"send_webhook"`
+	WebhookURL         string        `yaml:"webhook_url"`
+	WebhookTemplate    string        `yaml:"webhook_template"`
+	WebhookNotifyUnban bool          `yaml:"webhook_notify_unban"`
+	DryRun             bool          `yaml:"dry_run"`
+	StorageDir         string        `yaml:"storage_dir"`
+}
+
+func Default() *Config {
+	return &Config{
+		LogFile:            "/var/log/xray/access.log",
+		IPLimit:            3,
+		Window:             10 * time.Minute,
+		BanDuration:        60 * time.Minute,
+		BypassIPs:          []string{"127.0.0.1", "::1"},
+		BypassEmails:       []string{},
+		BanMode:            "iptables",
+		SendWebhook:        false,
+		WebhookURL:         "",
+		WebhookTemplate:    `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		WebhookNotifyUnban: false,
+		DryRun:             false,
+		StorageDir:         "/opt/xray-ip-limit",
+	}
+}
+
+// rawConfig keeps duration fields as strings so the loader can validate them explicitly.
+type rawConfig struct {
+	LogFile            string   `yaml:"log_file"`
+	IPLimit            *int     `yaml:"ip_limit"`
+	Window             string   `yaml:"window"`
+	BanDuration        string   `yaml:"ban_duration"`
+	BypassIPs          []string `yaml:"bypass_ips"`
+	BypassEmails       []string `yaml:"bypass_emails"`
+	BanMode            string   `yaml:"ban_mode"`
+	SendWebhook        bool     `yaml:"send_webhook"`
+	WebhookURL         string   `yaml:"webhook_url"`
+	WebhookTemplate    string   `yaml:"webhook_template"`
+	WebhookNotifyUnban bool     `yaml:"webhook_notify_unban"`
+	DryRun             bool     `yaml:"dry_run"`
+	StorageDir         string   `yaml:"storage_dir"`
+}
+
+func Load(path string) (*Config, error) {
+	cfg := Default()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	var raw rawConfig
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	if raw.LogFile != "" {
+		cfg.LogFile = raw.LogFile
+	}
+	if raw.IPLimit != nil {
+		cfg.IPLimit = *raw.IPLimit
+	}
+	if raw.Window != "" {
+		d, err := time.ParseDuration(raw.Window)
+		if err != nil {
+			return nil, fmt.Errorf("parse window: %w", err)
+		}
+		cfg.Window = d
+	}
+	if raw.BanDuration != "" {
+		d, err := time.ParseDuration(raw.BanDuration)
+		if err != nil {
+			return nil, fmt.Errorf("parse ban_duration: %w", err)
+		}
+		cfg.BanDuration = d
+	}
+	if raw.BypassIPs != nil {
+		cfg.BypassIPs = raw.BypassIPs
+	}
+	if raw.BypassEmails != nil {
+		cfg.BypassEmails = raw.BypassEmails
+	}
+	if raw.BanMode != "" {
+		cfg.BanMode = raw.BanMode
+	}
+	cfg.SendWebhook = raw.SendWebhook
+	if raw.WebhookURL != "" {
+		cfg.WebhookURL = raw.WebhookURL
+	}
+	if raw.WebhookTemplate != "" {
+		cfg.WebhookTemplate = raw.WebhookTemplate
+	}
+	cfg.WebhookNotifyUnban = raw.WebhookNotifyUnban
+	cfg.DryRun = raw.DryRun
+	if raw.StorageDir != "" {
+		cfg.StorageDir = raw.StorageDir
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if strings.TrimSpace(c.LogFile) == "" {
+		return fmt.Errorf("log_file must not be empty")
+	}
+	if c.IPLimit <= 0 {
+		return fmt.Errorf("ip_limit must be greater than zero")
+	}
+	if c.Window <= 0 {
+		return fmt.Errorf("window must be greater than zero")
+	}
+	if c.BanDuration < 0 {
+		return fmt.Errorf("ban_duration must not be negative")
+	}
+	if strings.TrimSpace(c.StorageDir) == "" {
+		return fmt.Errorf("storage_dir must not be empty")
+	}
+
+	switch strings.ToLower(strings.TrimSpace(c.BanMode)) {
+	case "iptables", "nftables", "nft":
+	default:
+		return fmt.Errorf("ban_mode must be one of: iptables, nftables, nft")
+	}
+
+	if c.SendWebhook {
+		if strings.TrimSpace(c.WebhookURL) == "" {
+			return fmt.Errorf("webhook_url must not be empty when send_webhook is enabled")
+		}
+		if strings.TrimSpace(c.WebhookTemplate) == "" {
+			return fmt.Errorf("webhook_template must not be empty when send_webhook is enabled")
+		}
+	}
+
+	return nil
+}

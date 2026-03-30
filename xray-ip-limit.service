@@ -1,0 +1,19 @@
+[Unit]
+Description=Xray IP Limit local daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/xray-ip-limit
+ExecStart=/opt/xray-ip-limit/xray-ip-limit -config /opt/xray-ip-limit/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xray-ip-limit
+
+[Install]
+WantedBy=multi-user.target
