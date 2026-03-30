@@ -33,11 +33,23 @@ type Config struct {
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
 	webhookUsernameExpr    *regexp.Regexp
-	WebhookNotifyUnban     bool              `yaml:"webhook_notify_unban"`
-	WebhookServerName      string            `yaml:"webhook_server_name"`
-	DryRun                 bool              `yaml:"dry_run"`
-	StorageDir             string            `yaml:"storage_dir"`
-	RemoteEnforcement      RemoteEnforcement `yaml:"remote_enforcement"`
+	WebhookNotifyUnban     bool               `yaml:"webhook_notify_unban"`
+	WebhookServerName      string             `yaml:"webhook_server_name"`
+	AdminNotifications     AdminNotifications `yaml:"admin_notifications"`
+	DryRun                 bool               `yaml:"dry_run"`
+	StorageDir             string             `yaml:"storage_dir"`
+	RemoteEnforcement      RemoteEnforcement  `yaml:"remote_enforcement"`
+}
+
+type AdminNotifications struct {
+	Enabled         bool              `yaml:"enabled"`
+	WebhookURL      string            `yaml:"webhook_url"`
+	Headers         map[string]string `yaml:"headers"`
+	Fields          []string          `yaml:"fields"`
+	Template        string            `yaml:"template"`
+	TemplateIPLimit string            `yaml:"template_ip_limit"`
+	TemplateTorrent string            `yaml:"template_torrent"`
+	NotifyUnban     bool              `yaml:"notify_unban"`
 }
 
 type RemoteEnforcement struct {
@@ -79,8 +91,29 @@ func Default() *Config {
 		WebhookUsernameRegex:   `^(.+)$`,
 		WebhookNotifyUnban:     false,
 		WebhookServerName:      "",
-		DryRun:                 false,
-		StorageDir:             "/opt/iptblocker",
+		AdminNotifications: AdminNotifications{
+			Enabled:    false,
+			WebhookURL: "",
+			Headers:    map[string]string{},
+			Fields: []string{
+				"reason",
+				"action",
+				"username",
+				"server",
+				"ban_duration",
+				"unique_ips",
+				"limit",
+				"window",
+				"torrent_tag",
+				"source",
+			},
+			Template:        "",
+			TemplateIPLimit: "",
+			TemplateTorrent: "",
+			NotifyUnban:     false,
+		},
+		DryRun:     false,
+		StorageDir: "/opt/iptblocker",
 		RemoteEnforcement: RemoteEnforcement{
 			Enabled:        false,
 			Mode:           "local_only",
@@ -92,33 +125,45 @@ func Default() *Config {
 
 // rawConfig keeps duration fields as strings so the loader can validate them explicitly.
 type rawConfig struct {
-	LogFile                string               `yaml:"log_file"`
-	IPLimit                *int                 `yaml:"ip_limit"`
-	Window                 string               `yaml:"window"`
-	BanDuration            string               `yaml:"ban_duration"`
-	BanDurationIPLimit     string               `yaml:"ban_duration_ip_limit"`
-	BanDurationTorrent     string               `yaml:"ban_duration_torrent"`
-	EnableTorrentDetection bool                 `yaml:"enable_torrent_detection"`
-	TorrentTag             *string              `yaml:"torrent_tag"`
-	BypassIPs              []string             `yaml:"bypass_ips"`
-	BypassEmails           []string             `yaml:"bypass_emails"`
-	BanMode                string               `yaml:"ban_mode"`
-	SendWebhook            bool                 `yaml:"send_webhook"`
-	WebhookURL             string               `yaml:"webhook_url"`
-	WebhookTemplate        string               `yaml:"webhook_template"`
-	WebhookTemplateIPLimit string               `yaml:"webhook_template_ip_limit"`
-	WebhookTemplateTorrent string               `yaml:"webhook_template_torrent"`
-	WebhookNotifyIPLimit   *bool                `yaml:"webhook_notify_ip_limit"`
-	WebhookNotifyTorrent   *bool                `yaml:"webhook_notify_torrent"`
-	LegacyWebhookTemplate  string               `yaml:"WebhookTemplate"`
-	WebhookHeaders         map[string]string    `yaml:"webhook_headers"`
-	LegacyWebhookHeaders   map[string]string    `yaml:"WebhookHeaders"`
-	WebhookUsernameRegex   string               `yaml:"webhook_username_regex"`
-	WebhookNotifyUnban     bool                 `yaml:"webhook_notify_unban"`
-	WebhookServerName      string               `yaml:"webhook_server_name"`
-	DryRun                 bool                 `yaml:"dry_run"`
-	StorageDir             string               `yaml:"storage_dir"`
-	RemoteEnforcement      rawRemoteEnforcement `yaml:"remote_enforcement"`
+	LogFile                string                `yaml:"log_file"`
+	IPLimit                *int                  `yaml:"ip_limit"`
+	Window                 string                `yaml:"window"`
+	BanDuration            string                `yaml:"ban_duration"`
+	BanDurationIPLimit     string                `yaml:"ban_duration_ip_limit"`
+	BanDurationTorrent     string                `yaml:"ban_duration_torrent"`
+	EnableTorrentDetection bool                  `yaml:"enable_torrent_detection"`
+	TorrentTag             *string               `yaml:"torrent_tag"`
+	BypassIPs              []string              `yaml:"bypass_ips"`
+	BypassEmails           []string              `yaml:"bypass_emails"`
+	BanMode                string                `yaml:"ban_mode"`
+	SendWebhook            bool                  `yaml:"send_webhook"`
+	WebhookURL             string                `yaml:"webhook_url"`
+	WebhookTemplate        string                `yaml:"webhook_template"`
+	WebhookTemplateIPLimit string                `yaml:"webhook_template_ip_limit"`
+	WebhookTemplateTorrent string                `yaml:"webhook_template_torrent"`
+	WebhookNotifyIPLimit   *bool                 `yaml:"webhook_notify_ip_limit"`
+	WebhookNotifyTorrent   *bool                 `yaml:"webhook_notify_torrent"`
+	LegacyWebhookTemplate  string                `yaml:"WebhookTemplate"`
+	WebhookHeaders         map[string]string     `yaml:"webhook_headers"`
+	LegacyWebhookHeaders   map[string]string     `yaml:"WebhookHeaders"`
+	WebhookUsernameRegex   string                `yaml:"webhook_username_regex"`
+	WebhookNotifyUnban     bool                  `yaml:"webhook_notify_unban"`
+	WebhookServerName      string                `yaml:"webhook_server_name"`
+	AdminNotifications     rawAdminNotifications `yaml:"admin_notifications"`
+	DryRun                 bool                  `yaml:"dry_run"`
+	StorageDir             string                `yaml:"storage_dir"`
+	RemoteEnforcement      rawRemoteEnforcement  `yaml:"remote_enforcement"`
+}
+
+type rawAdminNotifications struct {
+	Enabled         bool              `yaml:"enabled"`
+	WebhookURL      string            `yaml:"webhook_url"`
+	Headers         map[string]string `yaml:"headers"`
+	Fields          []string          `yaml:"fields"`
+	Template        string            `yaml:"template"`
+	TemplateIPLimit string            `yaml:"template_ip_limit"`
+	TemplateTorrent string            `yaml:"template_torrent"`
+	NotifyUnban     bool              `yaml:"notify_unban"`
 }
 
 type rawRemoteEnforcement struct {
@@ -220,6 +265,26 @@ func Load(path string) (*Config, error) {
 	if raw.WebhookServerName != "" {
 		cfg.WebhookServerName = raw.WebhookServerName
 	}
+	cfg.AdminNotifications.Enabled = raw.AdminNotifications.Enabled
+	if raw.AdminNotifications.WebhookURL != "" {
+		cfg.AdminNotifications.WebhookURL = raw.AdminNotifications.WebhookURL
+	}
+	if raw.AdminNotifications.Headers != nil {
+		cfg.AdminNotifications.Headers = raw.AdminNotifications.Headers
+	}
+	if raw.AdminNotifications.Fields != nil {
+		cfg.AdminNotifications.Fields = raw.AdminNotifications.Fields
+	}
+	if raw.AdminNotifications.Template != "" {
+		cfg.AdminNotifications.Template = raw.AdminNotifications.Template
+	}
+	if raw.AdminNotifications.TemplateIPLimit != "" {
+		cfg.AdminNotifications.TemplateIPLimit = raw.AdminNotifications.TemplateIPLimit
+	}
+	if raw.AdminNotifications.TemplateTorrent != "" {
+		cfg.AdminNotifications.TemplateTorrent = raw.AdminNotifications.TemplateTorrent
+	}
+	cfg.AdminNotifications.NotifyUnban = raw.AdminNotifications.NotifyUnban
 	cfg.DryRun = raw.DryRun
 	if raw.StorageDir != "" {
 		cfg.StorageDir = raw.StorageDir
@@ -289,6 +354,25 @@ func (c *Config) Validate() error {
 			strings.TrimSpace(c.WebhookTemplateIPLimit) == "" &&
 			strings.TrimSpace(c.WebhookTemplateTorrent) == "" {
 			return fmt.Errorf("at least one webhook template must be configured when send_webhook is enabled")
+		}
+	}
+
+	if c.AdminNotifications.Enabled {
+		if strings.TrimSpace(c.AdminNotifications.WebhookURL) == "" {
+			return fmt.Errorf("admin_notifications.webhook_url must not be empty when admin notifications are enabled")
+		}
+		hasTemplate := strings.TrimSpace(c.AdminNotifications.Template) != "" ||
+			strings.TrimSpace(c.AdminNotifications.TemplateIPLimit) != "" ||
+			strings.TrimSpace(c.AdminNotifications.TemplateTorrent) != ""
+		if !hasTemplate {
+			if len(c.AdminNotifications.Fields) == 0 {
+				return fmt.Errorf("admin_notifications.fields must not be empty when admin notifications are enabled without admin notification templates")
+			}
+			for _, field := range c.AdminNotifications.Fields {
+				if !isSupportedAdminNotificationField(field) {
+					return fmt.Errorf("admin_notifications.fields contains unsupported field %q", field)
+				}
+			}
 		}
 	}
 
@@ -401,4 +485,44 @@ func (c *Config) EffectiveWebhookServerName() string {
 	}
 
 	return host
+}
+
+func isSupportedAdminNotificationField(field string) bool {
+	switch strings.TrimSpace(field) {
+	case "reason",
+		"action",
+		"username",
+		"processed_username",
+		"server",
+		"source",
+		"ban_duration",
+		"detected_at",
+		"enforced_at",
+		"expires_at",
+		"unique_ips",
+		"limit",
+		"window",
+		"torrent_tag",
+		"distribution_scope",
+		"distribution_full_success",
+		"distribution_partial_failure":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Config) AdminTemplateForReason(reason events.Reason) string {
+	switch reason {
+	case events.ReasonIPLimit:
+		if strings.TrimSpace(c.AdminNotifications.TemplateIPLimit) != "" {
+			return c.AdminNotifications.TemplateIPLimit
+		}
+	case events.ReasonTorrent:
+		if strings.TrimSpace(c.AdminNotifications.TemplateTorrent) != "" {
+			return c.AdminNotifications.TemplateTorrent
+		}
+	}
+
+	return c.AdminNotifications.Template
 }

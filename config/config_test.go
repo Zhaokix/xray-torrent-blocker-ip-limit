@@ -40,6 +40,16 @@ webhook_notify_ip_limit: false
 webhook_notify_torrent: true
 webhook_server_name: "edge-1"
 webhook_username_regex: "^(.+)$"
+admin_notifications:
+  enabled: true
+  webhook_url: "https://example.com/admin-hook"
+  template_ip_limit: '{"chat_id":"123","text":"{{reason}} {{username}} {{server}}"}'
+  notify_unban: true
+  fields:
+    - "reason"
+    - "username"
+    - "server"
+    - "unique_ips"
 remote_enforcement:
   enabled: true
   mode: "local_and_remote"
@@ -83,6 +93,21 @@ remote_enforcement:
 	}
 	if cfg.WebhookServerName != "edge-1" {
 		t.Fatalf("expected webhook_server_name edge-1, got %q", cfg.WebhookServerName)
+	}
+	if !cfg.AdminNotifications.Enabled {
+		t.Fatal("expected admin notifications to be enabled")
+	}
+	if cfg.AdminNotifications.WebhookURL != "https://example.com/admin-hook" {
+		t.Fatalf("expected admin webhook URL to load, got %q", cfg.AdminNotifications.WebhookURL)
+	}
+	if cfg.AdminNotifications.TemplateIPLimit == "" {
+		t.Fatal("expected admin template_ip_limit to load")
+	}
+	if !cfg.AdminNotifications.NotifyUnban {
+		t.Fatal("expected admin notify_unban true")
+	}
+	if len(cfg.AdminNotifications.Fields) != 4 {
+		t.Fatalf("expected 4 admin notification fields, got %d", len(cfg.AdminNotifications.Fields))
 	}
 	if !cfg.EnableTorrentDetection {
 		t.Fatal("expected torrent detection to be enabled")
@@ -217,6 +242,62 @@ remote_enforcement:
 	}
 }
 
+func TestLoadRejectsAdminNotificationsWithoutURL(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/iptblocker"
+admin_notifications:
+  enabled: true
+  fields:
+    - "reason"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected admin webhook validation error")
+	}
+}
+
+func TestLoadAllowsAdminNotificationsWithTemplateOnly(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/iptblocker"
+admin_notifications:
+  enabled: true
+  webhook_url: "https://example.com/admin-hook"
+  template_ip_limit: '{"chat_id":"123","text":"{{reason}} {{username}}"}'
+`)
+
+	if _, err := Load(path); err != nil {
+		t.Fatalf("expected template-only admin notifications to be valid, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnsupportedAdminNotificationField(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/iptblocker"
+admin_notifications:
+  enabled: true
+  webhook_url: "https://example.com/admin-hook"
+  fields:
+    - "reason"
+    - "client_ip"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected unsupported admin notification field validation error")
+	}
+}
+
 func TestLoadRejectsInvalidRemoteMode(t *testing.T) {
 	path := writeTempConfig(t, `
 log_file: "/var/log/xray/access.log"
@@ -306,5 +387,16 @@ func TestBanDurationForReasonUsesSpecificOverride(t *testing.T) {
 	}
 	if cfg.BanDurationForReason(events.ReasonIPLimit) != 10*time.Minute {
 		t.Fatalf("expected default ip_limit ban duration, got %s", cfg.BanDurationForReason(events.ReasonIPLimit))
+	}
+}
+
+func TestAdminTemplateForReasonUsesSpecificTemplate(t *testing.T) {
+	cfg := Default()
+	cfg.AdminNotifications.Template = `{"type":"default"}`
+	cfg.AdminNotifications.TemplateTorrent = `{"type":"torrent"}`
+
+	template := cfg.AdminTemplateForReason(events.ReasonTorrent)
+	if template != `{"type":"torrent"}` {
+		t.Fatalf("expected torrent admin template, got %q", template)
 	}
 }

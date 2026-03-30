@@ -9,6 +9,7 @@
 - Optional torrent-tag based enforcement from Xray access logs
 - Persistent local state in SQLite
 - Optional webhook notifications
+- Optional admin webhook notifications with selectable fields
 - Dry-run mode for safe validation
 
 The current implementation includes a minimal remote-enforcement MVP for explicitly configured targets. It does not yet include admin notifications or a richer distributed control plane.
@@ -90,6 +91,7 @@ Important fields:
 - `webhook_notify_ip_limit`: enable or disable webhook delivery for `ip_limit` events
 - `webhook_notify_torrent`: enable or disable webhook delivery for `torrent` events
 - `webhook_server_name`: optional hostname override used in webhook payloads; when empty, `iptblocker` uses the system hostname
+- `admin_notifications`: optional admin-focused webhook channel with selectable JSON fields and optional unban notifications
 
 ### Telegram Webhook Example
 
@@ -174,6 +176,97 @@ Supported modes:
 - `local_and_remote`
 
 Use remote enforcement only when the client IP visible in Xray logs is trustworthy for the target topology.
+
+### Admin Notification Example
+
+If you want a separate admin webhook without client IP, enable the admin channel and select only the fields you care about:
+
+```yaml
+admin_notifications:
+  enabled: true
+  webhook_url: "https://example.com/admin-hook"
+  headers:
+    Authorization: "Bearer <token>"
+  fields:
+    - "reason"
+    - "action"
+    - "username"
+    - "server"
+    - "unique_ips"
+    - "limit"
+    - "window"
+    - "ban_duration"
+  notify_unban: false
+```
+
+### Admin Telegram Bot Example
+
+If you want `iptblocker` to send a normal Telegram `sendMessage` body directly, use the admin template mode:
+
+```yaml
+admin_notifications:
+  enabled: true
+  webhook_url: "https://api.telegram.org/bot<token>/sendMessage"
+  headers:
+    Content-Type: "application/json"
+  template_ip_limit: '{"chat_id":"123456789","text":"Subscription sharing detected.\n\nUser: {{username}}\nServer: {{server}}\nUnique IPs: {{unique_ips}}\nLimit: {{limit}}\nWindow: {{window}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
+  template_torrent: '{"chat_id":"123456789","text":"Torrent traffic detected.\n\nUser: {{username}}\nServer: {{server}}\nTag: {{torrent_tag}}\nSource: {{source}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
+  notify_unban: false
+```
+
+Supported admin template tokens:
+
+- `{{reason}}`
+- `{{action}}`
+- `{{username}}`
+- `{{processed_username}}`
+- `{{server}}`
+- `{{source}}`
+- `{{ban_duration}}`
+- `{{detected_at}}`
+- `{{enforced_at}}`
+- `{{expires_at}}`
+- `{{unique_ips}}`
+- `{{limit}}`
+- `{{window}}`
+- `{{torrent_tag}}`
+- `{{distribution_scope}}`
+- `{{distribution_full_success}}`
+- `{{distribution_partial_failure}}`
+
+If you do not configure `template`, `template_ip_limit`, or `template_torrent`, the admin channel falls back to JSON field mode and sends only the fields listed in `admin_notifications.fields`.
+
+Example direct Telegram body for an `ip_limit` event:
+
+```json
+{"chat_id":"123456789","text":"Subscription sharing detected.\n\nUser: user.123456789\nServer: usa-edge-1\nUnique IPs: 10\nLimit: 1\nWindow: 5m0s\nAction: ban\nBan duration: 15m0s"}
+```
+
+Supported admin notification fields:
+
+- `reason`
+- `action`
+- `username`
+- `processed_username`
+- `server`
+- `source`
+- `ban_duration`
+- `detected_at`
+- `enforced_at`
+- `expires_at`
+- `unique_ips`
+- `limit`
+- `window`
+- `torrent_tag`
+- `distribution_scope`
+- `distribution_full_success`
+- `distribution_partial_failure`
+
+Reason-specific context:
+
+- For `ip_limit`, the admin payload can include `unique_ips`, `limit`, and `window`
+- For `torrent`, the admin payload can include `torrent_tag` and `source`
+- `client_ip` is intentionally not included in the supported admin field list
 
 ## Linux Smoke Check
 

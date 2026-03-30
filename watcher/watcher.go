@@ -13,6 +13,7 @@ import (
 	"xray-ip-limit/events"
 	"xray-ip-limit/extractors"
 	"xray-ip-limit/firewall"
+	"xray-ip-limit/notifications/adminwebhook"
 	"xray-ip-limit/notifications/webhook"
 	"xray-ip-limit/storage"
 )
@@ -23,6 +24,7 @@ type Watcher struct {
 	firewall        *firewall.Manager
 	distributor     *distribution.Manager
 	notifier        *webhook.Client
+	adminNotifier   *adminwebhook.Client
 	detector        *iplimit.Detector
 	torrentDetector *torrent.Detector
 	bypass          map[string]struct{}
@@ -43,12 +45,17 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 	if cfg.SendWebhook && cfg.WebhookURL != "" {
 		notifier = webhook.New(cfg)
 	}
+	var adminNotifier *adminwebhook.Client
+	if cfg.AdminNotifications.Enabled && cfg.AdminNotifications.WebhookURL != "" {
+		adminNotifier = adminwebhook.New(cfg)
+	}
 	return &Watcher{
 		cfg:             cfg,
 		storage:         st,
 		firewall:        fw,
 		distributor:     distribution.NewManager(cfg, fw),
 		notifier:        notifier,
+		adminNotifier:   adminNotifier,
 		detector:        iplimit.New(cfg.IPLimit, cfg.Window),
 		torrentDetector: torrent.New(cfg.TorrentTag),
 		bypass:          bypass,
@@ -121,7 +128,11 @@ func (w *Watcher) processLine(line string) {
 				w.cfg.BanDurationForReason(events.ReasonTorrent),
 			)
 
-			w.applyBan(event)
+			w.applyBan(event, adminwebhook.Data{
+				Event:      event,
+				ServerName: w.cfg.EffectiveWebhookServerName(),
+				TorrentTag: torrentDecision.Tag,
+			})
 			return
 		}
 	}
@@ -147,10 +158,16 @@ func (w *Watcher) processLine(line string) {
 		w.cfg.BanDurationForReason(events.ReasonIPLimit),
 	)
 
-	w.applyBan(event)
+	w.applyBan(event, adminwebhook.Data{
+		Event:      event,
+		ServerName: w.cfg.EffectiveWebhookServerName(),
+		UniqueIPs:  decision.UniqueIPs,
+		Limit:      w.cfg.IPLimit,
+		Window:     w.cfg.Window,
+	})
 }
 
-func (w *Watcher) applyBan(event events.Event) {
+func (w *Watcher) applyBan(event events.Event, adminData adminwebhook.Data) {
 	result := w.distributor.Apply(event)
 	if !result.AnyApplied() {
 		slog.Error("ban failed", "reason", event.Reason, "ip", event.ClientIP, "local_error", result.LocalError, "remote_results", len(result.TargetResults))
@@ -158,6 +175,10 @@ func (w *Watcher) applyBan(event events.Event) {
 	}
 
 	event.EnforcedAt = time.Now()
+	adminData.Event = event
+	adminData.DistributionScope = string(result.Scope)
+	adminData.DistributionFullSuccess = result.FullySuccessful
+	adminData.DistributionPartialFailure = result.PartiallyFailed
 	if err := w.storage.AddBan(event); err != nil {
 		slog.Error("storage add ban failed after firewall ban", "ip", event.ClientIP, "err", err)
 		rollbackResult := w.distributor.Revoke(event)
@@ -180,6 +201,9 @@ func (w *Watcher) applyBan(event events.Event) {
 
 	if w.notifier != nil && w.cfg.ShouldNotify(event.Reason) {
 		go w.notifier.Notify(event)
+	}
+	if w.adminNotifier != nil {
+		go w.adminNotifier.Notify(adminData)
 	}
 }
 
@@ -254,6 +278,15 @@ func (w *Watcher) unbanLoop() {
 			)
 			if w.notifier != nil && w.cfg.WebhookNotifyUnban && w.cfg.ShouldNotify(event.Reason) {
 				go w.notifier.Notify(event)
+			}
+			if w.adminNotifier != nil && w.cfg.AdminNotifications.NotifyUnban {
+				go w.adminNotifier.Notify(adminwebhook.Data{
+					Event:                      event,
+					ServerName:                 w.cfg.EffectiveWebhookServerName(),
+					DistributionScope:          string(result.Scope),
+					DistributionFullSuccess:    result.FullySuccessful,
+					DistributionPartialFailure: result.PartiallyFailed,
+				})
 			}
 		}
 	}

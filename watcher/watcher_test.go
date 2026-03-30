@@ -1,6 +1,10 @@
 package watcher
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -104,5 +108,79 @@ func TestProcessLineBansTorrentTaggedIPImmediately(t *testing.T) {
 	}
 	if active[0].DetectedAt.IsZero() || active[0].EnforcedAt.IsZero() {
 		t.Fatal("expected detected_at and enforced_at to be stored")
+	}
+}
+
+func TestProcessLineSendsAdminNotificationForIPLimit(t *testing.T) {
+	requestBody := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		requestBody <- payload
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Default()
+	cfg.IPLimit = 1
+	cfg.Window = 5 * time.Minute
+	cfg.BanDuration = 15 * time.Minute
+	cfg.AdminNotifications.Enabled = true
+	cfg.AdminNotifications.WebhookURL = server.URL
+	cfg.AdminNotifications.Fields = []string{"reason", "username", "server", "unique_ips", "limit", "window", "ban_duration"}
+	cfg.WebhookServerName = "usa-edge-1"
+
+	fw, err := firewall.NewManager("iptables", true)
+	if err != nil {
+		t.Fatalf("NewManager returned error: %v", err)
+	}
+
+	st, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage.New returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	})
+
+	w := New(cfg, st, fw)
+	email := "user@example.com"
+
+	w.processLine(`2026/03/30 10:00:00 from tcp:203.0.113.1:443 accepted email: ` + email)
+	w.processLine(`2026/03/30 10:00:01 from tcp:203.0.113.2:443 accepted email: ` + email)
+
+	select {
+	case payload := <-requestBody:
+		if payload["reason"] != "ip_limit" {
+			t.Fatalf("expected reason ip_limit, got %#v", payload["reason"])
+		}
+		if payload["username"] != email {
+			t.Fatalf("expected username %q, got %#v", email, payload["username"])
+		}
+		if payload["server"] != "usa-edge-1" {
+			t.Fatalf("expected server usa-edge-1, got %#v", payload["server"])
+		}
+		if payload["ban_duration"] != "15m0s" {
+			t.Fatalf("expected ban_duration 15m0s, got %#v", payload["ban_duration"])
+		}
+		if got, ok := payload["unique_ips"].(float64); !ok || got != 2 {
+			t.Fatalf("expected unique_ips 2, got %#v", payload["unique_ips"])
+		}
+		if got, ok := payload["limit"].(float64); !ok || got != 1 {
+			t.Fatalf("expected limit 1, got %#v", payload["limit"])
+		}
+		if payload["window"] != "5m0s" {
+			t.Fatalf("expected window 5m0s, got %#v", payload["window"])
+		}
+		if _, exists := payload["client_ip"]; exists {
+			t.Fatal("did not expect client_ip in admin payload")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected admin notification to be received")
 	}
 }
