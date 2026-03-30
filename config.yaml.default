@@ -49,3 +49,10 @@ dry_run: false
 
 # Directory used for the local SQLite state.
 storage_dir: "/opt/iptblocker"
+
+# Optional remote enforcement on edge or HAProxy hosts over SSH.
+remote_enforcement:
+  enabled: false
+  mode: "local_only"
+  connect_timeout: "10s"
+  targets: []

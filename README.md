@@ -1,17 +1,17 @@
 # Xray Torrent Blocker IP Limit
 
-`iptblocker` is a local daemon that watches the Xray access log, tracks unique client IPs per subscription email inside a sliding window, and applies local firewall bans when the configured limit is exceeded. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
+`iptblocker` is a local-first daemon that watches the Xray access log, tracks unique client IPs per subscription identifier inside a sliding window, and applies firewall bans when the configured policy is violated. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
 
 ## Current Scope
 
-- Local daemon only
 - Local firewall enforcement through `iptables` or `nftables`
+- Optional remote enforcement on explicitly configured edge hosts over SSH
 - Optional torrent-tag based enforcement from Xray access logs
-- Persistent local ban state in SQLite
+- Persistent local state in SQLite
 - Optional webhook notifications
 - Dry-run mode for safe validation
 
-This repository does not yet implement distributed enforcement or remote ban propagation in the current phase.
+The current implementation includes a minimal remote-enforcement MVP for explicitly configured targets. It does not yet include admin notifications or a richer distributed control plane.
 
 ## Project Basis
 
@@ -22,15 +22,16 @@ This project was built with ideas and reference materials from:
 
 ### How This Project Differs
 
-- Compared to `V2IpLimit`, `iptblocker` is focused on a production-safe local daemon flow with persistent SQLite state, explicit firewall reconciliation, dry-run validation, webhook integration, and clearer layering between extraction, detection, enforcement, and notifications.
-- Compared to `xray-torrent-blocker`, `iptblocker` combines IP-limit enforcement and torrent-tag enforcement in one local daemon, while keeping a simpler local-first scope instead of moving immediately into broader distributed enforcement patterns.
-- The current implementation reuses useful architectural ideas from both projects, but keeps its own code structure and avoids legacy patterns such as overly global mutable state.
+- Compared to `V2IpLimit`, `iptblocker` is focused on a production-safe daemon flow with persistent SQLite state, explicit firewall reconciliation, dry-run validation, webhook integration, and clearer layering between extraction, detection, enforcement, distribution, and notifications.
+- Compared to `xray-torrent-blocker`, `iptblocker` combines IP-limit enforcement and torrent-tag enforcement in one daemon and keeps the architecture local-first, while adding a small, configuration-driven remote-enforcement path instead of moving directly to a broader control plane.
+- The implementation reuses useful architectural ideas from both projects, but keeps its own code structure and avoids legacy patterns such as overly global mutable state.
 
 ## Requirements
 
 - Linux host with Xray access logs enabled
 - `iptables` or `nftables`
 - `conntrack` available in `PATH` if you want existing connections to be dropped on ban
+- `ssh` available in `PATH` if you want remote enforcement
 
 ## Build
 
@@ -61,8 +62,6 @@ The repository publishes a Linux amd64 tarball on tagged releases.
 curl -fsSL https://raw.githubusercontent.com/Zhaokix/xray-torrent-blocker-ip-limit/main/install-release.sh | sudo bash
 ```
 
-This installer downloads the latest release archive, extracts it to a temporary directory, and runs the bundled `install.sh`.
-
 Current default release asset:
 
 - `iptblocker_linux_amd64.tar.gz`
@@ -74,17 +73,18 @@ Start from [config.yaml.default](/e:/1-Development/IP-Torrent-Ban/xray-ip-limit/
 Important fields:
 
 - `log_file`: path to the Xray access log
-- `ip_limit`: max unique IPs allowed per email within the window
-- `window`: sliding duration used for counting unique IPs
+- `ip_limit`: max unique IPs allowed per identifier inside the window
+- `window`: sliding duration used for unique IP counting
 - `ban_duration`: global fallback ban duration
 - `ban_duration_ip_limit`: optional override for `ip_limit` bans
 - `ban_duration_torrent`: optional override for `torrent` bans
 - `enable_torrent_detection`: enable torrent-triggered bans from tagged Xray log lines
-- `torrent_tag`: string marker that identifies torrent traffic in the log, typically an Xray `outboundTag`
+- `torrent_tag`: marker that identifies torrent traffic in the log, typically an Xray `outboundTag`
 - `ban_mode`: `iptables`, `nftables`, or `nft`
-- `dry_run`: when `true`, no firewall changes are applied
+- `dry_run`: when `true`, no local or remote firewall changes are applied
 - `storage_dir`: local SQLite state directory
-- `webhook_username_regex`: regex used to transform the raw subscription identifier before it is inserted into the webhook payload
+- `remote_enforcement`: optional SSH-based remote enforcement configuration
+- `webhook_username_regex`: regex used to transform the raw identifier before it is inserted into the webhook payload
 - `webhook_template_ip_limit`: optional template override used only for `ip_limit` events
 - `webhook_template_torrent`: optional template override used only for `torrent` events
 - `webhook_notify_ip_limit`: enable or disable webhook delivery for `ip_limit` events
@@ -98,7 +98,7 @@ If your user identifier looks like `user.123456789` and the Telegram chat ID is 
 ```yaml
 send_webhook: true
 webhook_url: "https://api.telegram.org/bot<token>/sendMessage"
-webhook_template: '{"chat_id":"%s","text":"⚠️ Subscription sharing detected.\n\n🌐 IP: %s\n🖥 Server: %s\n🛡 Action: %s\n⏱ Ban: %s"}'
+webhook_template: '{"chat_id":"%s","text":"Subscription sharing detected.\n\nIP: %s\nServer: %s\nAction: %s\nBan: %s"}'
 webhook_username_regex: '^\d+\.(\d+)$'
 webhook_notify_unban: false
 ```
@@ -127,7 +127,7 @@ webhook_notify_torrent: false
 webhook_server_name: "usa-edge-1"
 ```
 
-All webhook templates currently receive the same placeholders in this order:
+All webhook templates receive placeholders in this order:
 
 - `%s`: processed username
 - `%s`: client IP
@@ -144,6 +144,36 @@ ban_duration: "30m"
 ban_duration_ip_limit: "15m"
 ban_duration_torrent: "24h"
 ```
+
+### Remote Enforcement Example
+
+If the real client traffic enters the infrastructure through remote edge or HAProxy hosts, you can explicitly define remote targets:
+
+```yaml
+remote_enforcement:
+  enabled: true
+  mode: "local_and_remote"
+  connect_timeout: "10s"
+  targets:
+    - name: "edge-1"
+      host: "198.51.100.10"
+      port: 22
+      user: "root"
+      backend: "iptables"
+    - name: "edge-2"
+      host: "198.51.100.11"
+      port: 22
+      user: "root"
+      backend: "iptables"
+```
+
+Supported modes:
+
+- `local_only`
+- `remote_only`
+- `local_and_remote`
+
+Use remote enforcement only when the client IP visible in Xray logs is trustworthy for the target topology.
 
 ## Linux Smoke Check
 

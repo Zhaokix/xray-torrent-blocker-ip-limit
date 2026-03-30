@@ -40,6 +40,16 @@ webhook_notify_ip_limit: false
 webhook_notify_torrent: true
 webhook_server_name: "edge-1"
 webhook_username_regex: "^(.+)$"
+remote_enforcement:
+  enabled: true
+  mode: "local_and_remote"
+  connect_timeout: "15s"
+  targets:
+    - name: "edge-1"
+      host: "198.51.100.10"
+      port: 22
+      user: "root"
+      backend: "iptables"
 `)
 
 	cfg, err := Load(path)
@@ -79,6 +89,18 @@ webhook_username_regex: "^(.+)$"
 	}
 	if cfg.TorrentTag != "TORRENT" {
 		t.Fatalf("expected torrent_tag TORRENT, got %q", cfg.TorrentTag)
+	}
+	if !cfg.RemoteEnforcement.Enabled {
+		t.Fatal("expected remote enforcement to be enabled")
+	}
+	if cfg.RemoteEnforcement.Mode != "local_and_remote" {
+		t.Fatalf("expected remote mode local_and_remote, got %q", cfg.RemoteEnforcement.Mode)
+	}
+	if cfg.RemoteEnforcement.ConnectTimeout != 15*time.Second {
+		t.Fatalf("expected remote connect timeout 15s, got %s", cfg.RemoteEnforcement.ConnectTimeout)
+	}
+	if len(cfg.RemoteEnforcement.Targets) != 1 || cfg.RemoteEnforcement.Targets[0].Name != "edge-1" {
+		t.Fatalf("expected one remote target edge-1, got %+v", cfg.RemoteEnforcement.Targets)
 	}
 }
 
@@ -174,6 +196,42 @@ storage_dir: "/opt/iptblocker"
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected invalid ban_duration_torrent error")
+	}
+}
+
+func TestLoadRejectsRemoteEnforcementWithoutTargets(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/iptblocker"
+remote_enforcement:
+  enabled: true
+  mode: "remote_only"
+  connect_timeout: "10s"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected remote targets validation error")
+	}
+}
+
+func TestLoadRejectsInvalidRemoteMode(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/iptblocker"
+remote_enforcement:
+  enabled: false
+  mode: "invalid"
+  connect_timeout: "10s"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected remote mode validation error")
 	}
 }
 

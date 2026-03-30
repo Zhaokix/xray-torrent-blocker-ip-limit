@@ -9,6 +9,7 @@ import (
 	"xray-ip-limit/config"
 	"xray-ip-limit/detectors/iplimit"
 	"xray-ip-limit/detectors/torrent"
+	"xray-ip-limit/distribution"
 	"xray-ip-limit/events"
 	"xray-ip-limit/extractors"
 	"xray-ip-limit/firewall"
@@ -20,6 +21,7 @@ type Watcher struct {
 	cfg             *config.Config
 	storage         *storage.Storage
 	firewall        *firewall.Manager
+	distributor     *distribution.Manager
 	notifier        *webhook.Client
 	detector        *iplimit.Detector
 	torrentDetector *torrent.Detector
@@ -45,6 +47,7 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 		cfg:             cfg,
 		storage:         st,
 		firewall:        fw,
+		distributor:     distribution.NewManager(cfg, fw),
 		notifier:        notifier,
 		detector:        iplimit.New(cfg.IPLimit, cfg.Window),
 		torrentDetector: torrent.New(cfg.TorrentTag),
@@ -148,16 +151,18 @@ func (w *Watcher) processLine(line string) {
 }
 
 func (w *Watcher) applyBan(event events.Event) {
-	if err := w.firewall.Ban(event.ClientIP); err != nil {
-		slog.Error("ban failed", "ip", event.ClientIP, "err", err)
+	result := w.distributor.Apply(event)
+	if !result.AnyApplied() {
+		slog.Error("ban failed", "reason", event.Reason, "ip", event.ClientIP, "local_error", result.LocalError, "remote_results", len(result.TargetResults))
 		return
 	}
 
 	event.EnforcedAt = time.Now()
 	if err := w.storage.AddBan(event); err != nil {
 		slog.Error("storage add ban failed after firewall ban", "ip", event.ClientIP, "err", err)
-		if rollbackErr := w.firewall.Unban(event.ClientIP); rollbackErr != nil {
-			slog.Error("ban rollback failed", "ip", event.ClientIP, "err", rollbackErr)
+		rollbackResult := w.distributor.Revoke(event)
+		if rollbackResult.PartiallyFailed || !rollbackResult.AnyApplied() {
+			slog.Error("ban rollback failed", "ip", event.ClientIP, "local_error", rollbackResult.LocalError, "remote_results", len(rollbackResult.TargetResults))
 		}
 		return
 	}
@@ -167,6 +172,9 @@ func (w *Watcher) applyBan(event events.Event) {
 		"ip", event.ClientIP,
 		"email", event.RawUsername,
 		"processed_username", event.ProcessedUsername,
+		"distribution_scope", result.Scope,
+		"distribution_full_success", result.FullySuccessful,
+		"distribution_partial_failure", result.PartiallyFailed,
 		"expires", event.ExpiresAt.Format(time.RFC3339),
 	)
 
@@ -192,10 +200,22 @@ func (w *Watcher) restoreBans() error {
 			continue
 		}
 
-		if err := w.firewall.Ban(b.IP); err != nil {
-			slog.Warn("restore ban failed", "ip", b.IP, "err", err)
+		restoreEvent := events.Event{
+			Reason:            b.Reason,
+			Action:            events.ActionBan,
+			RawUsername:       b.Email,
+			ProcessedUsername: b.ProcessedUsername,
+			ClientIP:          b.IP,
+			Source:            b.Source,
+			DetectedAt:        b.DetectedAt,
+			EnforcedAt:        b.EnforcedAt,
+			ExpiresAt:         b.ExpiresAt,
+		}
+		result := w.distributor.Apply(restoreEvent)
+		if !result.AnyApplied() {
+			slog.Warn("restore ban failed", "ip", b.IP, "local_error", result.LocalError, "remote_results", len(result.TargetResults))
 		} else {
-			slog.Info("restored ban", "reason", b.Reason, "ip", b.IP, "email", b.Email, "processed_username", b.ProcessedUsername, "source", b.Source, "expires", b.ExpiresAt.Format(time.RFC3339))
+			slog.Info("restored ban", "reason", b.Reason, "ip", b.IP, "email", b.Email, "processed_username", b.ProcessedUsername, "source", b.Source, "distribution_scope", result.Scope, "distribution_full_success", result.FullySuccessful, "distribution_partial_failure", result.PartiallyFailed, "expires", b.ExpiresAt.Format(time.RFC3339))
 		}
 	}
 	return nil
@@ -211,8 +231,10 @@ func (w *Watcher) unbanLoop() {
 			continue
 		}
 		for _, b := range expired {
-			if err := w.firewall.Unban(b.IP); err != nil {
-				slog.Warn("unban failed", "ip", b.IP, "err", err)
+			event := w.newUnbanEvent(b)
+			result := w.distributor.Revoke(event)
+			if !result.AnyApplied() {
+				slog.Warn("unban failed", "ip", b.IP, "local_error", result.LocalError, "remote_results", len(result.TargetResults))
 				continue
 			}
 
@@ -221,13 +243,14 @@ func (w *Watcher) unbanLoop() {
 				continue
 			}
 
-			event := w.newUnbanEvent(b)
-
 			slog.Info("unbanned",
 				"reason", event.Reason,
 				"ip", event.ClientIP,
 				"email", event.RawUsername,
 				"processed_username", event.ProcessedUsername,
+				"distribution_scope", result.Scope,
+				"distribution_full_success", result.FullySuccessful,
+				"distribution_partial_failure", result.PartiallyFailed,
 			)
 			if w.notifier != nil && w.cfg.WebhookNotifyUnban && w.cfg.ShouldNotify(event.Reason) {
 				go w.notifier.Notify(event)

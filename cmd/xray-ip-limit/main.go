@@ -52,6 +52,9 @@ func main() {
 		"ban_duration", cfg.BanDuration,
 		"ban_mode", cfg.BanMode,
 		"firewall_backend", fw.Name(),
+		"remote_enabled", cfg.RemoteEnforcement.Enabled,
+		"remote_mode", cfg.RemoteEnforcement.Mode,
+		"remote_targets", len(cfg.RemoteEnforcement.Targets),
 		"dry_run", cfg.DryRun,
 	)
 

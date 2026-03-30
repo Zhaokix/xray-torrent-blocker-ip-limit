@@ -33,10 +33,26 @@ type Config struct {
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
 	webhookUsernameExpr    *regexp.Regexp
-	WebhookNotifyUnban     bool   `yaml:"webhook_notify_unban"`
-	WebhookServerName      string `yaml:"webhook_server_name"`
-	DryRun                 bool   `yaml:"dry_run"`
-	StorageDir             string `yaml:"storage_dir"`
+	WebhookNotifyUnban     bool              `yaml:"webhook_notify_unban"`
+	WebhookServerName      string            `yaml:"webhook_server_name"`
+	DryRun                 bool              `yaml:"dry_run"`
+	StorageDir             string            `yaml:"storage_dir"`
+	RemoteEnforcement      RemoteEnforcement `yaml:"remote_enforcement"`
+}
+
+type RemoteEnforcement struct {
+	Enabled        bool           `yaml:"enabled"`
+	Mode           string         `yaml:"mode"`
+	ConnectTimeout time.Duration  `yaml:"connect_timeout"`
+	Targets        []RemoteTarget `yaml:"targets"`
+}
+
+type RemoteTarget struct {
+	Name    string `yaml:"name"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
+	User    string `yaml:"user"`
+	Backend string `yaml:"backend"`
 }
 
 func Default() *Config {
@@ -65,37 +81,51 @@ func Default() *Config {
 		WebhookServerName:      "",
 		DryRun:                 false,
 		StorageDir:             "/opt/iptblocker",
+		RemoteEnforcement: RemoteEnforcement{
+			Enabled:        false,
+			Mode:           "local_only",
+			ConnectTimeout: 10 * time.Second,
+			Targets:        nil,
+		},
 	}
 }
 
 // rawConfig keeps duration fields as strings so the loader can validate them explicitly.
 type rawConfig struct {
-	LogFile                string            `yaml:"log_file"`
-	IPLimit                *int              `yaml:"ip_limit"`
-	Window                 string            `yaml:"window"`
-	BanDuration            string            `yaml:"ban_duration"`
-	BanDurationIPLimit     string            `yaml:"ban_duration_ip_limit"`
-	BanDurationTorrent     string            `yaml:"ban_duration_torrent"`
-	EnableTorrentDetection bool              `yaml:"enable_torrent_detection"`
-	TorrentTag             *string           `yaml:"torrent_tag"`
-	BypassIPs              []string          `yaml:"bypass_ips"`
-	BypassEmails           []string          `yaml:"bypass_emails"`
-	BanMode                string            `yaml:"ban_mode"`
-	SendWebhook            bool              `yaml:"send_webhook"`
-	WebhookURL             string            `yaml:"webhook_url"`
-	WebhookTemplate        string            `yaml:"webhook_template"`
-	WebhookTemplateIPLimit string            `yaml:"webhook_template_ip_limit"`
-	WebhookTemplateTorrent string            `yaml:"webhook_template_torrent"`
-	WebhookNotifyIPLimit   *bool             `yaml:"webhook_notify_ip_limit"`
-	WebhookNotifyTorrent   *bool             `yaml:"webhook_notify_torrent"`
-	LegacyWebhookTemplate  string            `yaml:"WebhookTemplate"`
-	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
-	LegacyWebhookHeaders   map[string]string `yaml:"WebhookHeaders"`
-	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
-	WebhookNotifyUnban     bool              `yaml:"webhook_notify_unban"`
-	WebhookServerName      string            `yaml:"webhook_server_name"`
-	DryRun                 bool              `yaml:"dry_run"`
-	StorageDir             string            `yaml:"storage_dir"`
+	LogFile                string               `yaml:"log_file"`
+	IPLimit                *int                 `yaml:"ip_limit"`
+	Window                 string               `yaml:"window"`
+	BanDuration            string               `yaml:"ban_duration"`
+	BanDurationIPLimit     string               `yaml:"ban_duration_ip_limit"`
+	BanDurationTorrent     string               `yaml:"ban_duration_torrent"`
+	EnableTorrentDetection bool                 `yaml:"enable_torrent_detection"`
+	TorrentTag             *string              `yaml:"torrent_tag"`
+	BypassIPs              []string             `yaml:"bypass_ips"`
+	BypassEmails           []string             `yaml:"bypass_emails"`
+	BanMode                string               `yaml:"ban_mode"`
+	SendWebhook            bool                 `yaml:"send_webhook"`
+	WebhookURL             string               `yaml:"webhook_url"`
+	WebhookTemplate        string               `yaml:"webhook_template"`
+	WebhookTemplateIPLimit string               `yaml:"webhook_template_ip_limit"`
+	WebhookTemplateTorrent string               `yaml:"webhook_template_torrent"`
+	WebhookNotifyIPLimit   *bool                `yaml:"webhook_notify_ip_limit"`
+	WebhookNotifyTorrent   *bool                `yaml:"webhook_notify_torrent"`
+	LegacyWebhookTemplate  string               `yaml:"WebhookTemplate"`
+	WebhookHeaders         map[string]string    `yaml:"webhook_headers"`
+	LegacyWebhookHeaders   map[string]string    `yaml:"WebhookHeaders"`
+	WebhookUsernameRegex   string               `yaml:"webhook_username_regex"`
+	WebhookNotifyUnban     bool                 `yaml:"webhook_notify_unban"`
+	WebhookServerName      string               `yaml:"webhook_server_name"`
+	DryRun                 bool                 `yaml:"dry_run"`
+	StorageDir             string               `yaml:"storage_dir"`
+	RemoteEnforcement      rawRemoteEnforcement `yaml:"remote_enforcement"`
+}
+
+type rawRemoteEnforcement struct {
+	Enabled        bool           `yaml:"enabled"`
+	Mode           string         `yaml:"mode"`
+	ConnectTimeout string         `yaml:"connect_timeout"`
+	Targets        []RemoteTarget `yaml:"targets"`
 }
 
 func Load(path string) (*Config, error) {
@@ -194,6 +224,20 @@ func Load(path string) (*Config, error) {
 	if raw.StorageDir != "" {
 		cfg.StorageDir = raw.StorageDir
 	}
+	cfg.RemoteEnforcement.Enabled = raw.RemoteEnforcement.Enabled
+	if raw.RemoteEnforcement.Mode != "" {
+		cfg.RemoteEnforcement.Mode = raw.RemoteEnforcement.Mode
+	}
+	if raw.RemoteEnforcement.ConnectTimeout != "" {
+		d, err := time.ParseDuration(raw.RemoteEnforcement.ConnectTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("parse remote_enforcement.connect_timeout: %w", err)
+		}
+		cfg.RemoteEnforcement.ConnectTimeout = d
+	}
+	if raw.RemoteEnforcement.Targets != nil {
+		cfg.RemoteEnforcement.Targets = raw.RemoteEnforcement.Targets
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -227,6 +271,9 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.StorageDir) == "" {
 		return fmt.Errorf("storage_dir must not be empty")
 	}
+	if c.RemoteEnforcement.ConnectTimeout <= 0 {
+		return fmt.Errorf("remote_enforcement.connect_timeout must be greater than zero")
+	}
 
 	switch strings.ToLower(strings.TrimSpace(c.BanMode)) {
 	case "iptables", "nftables", "nft":
@@ -242,6 +289,37 @@ func (c *Config) Validate() error {
 			strings.TrimSpace(c.WebhookTemplateIPLimit) == "" &&
 			strings.TrimSpace(c.WebhookTemplateTorrent) == "" {
 			return fmt.Errorf("at least one webhook template must be configured when send_webhook is enabled")
+		}
+	}
+
+	switch strings.ToLower(strings.TrimSpace(c.RemoteEnforcement.Mode)) {
+	case "local_only", "remote_only", "local_and_remote":
+	default:
+		return fmt.Errorf("remote_enforcement.mode must be one of: local_only, remote_only, local_and_remote")
+	}
+
+	if c.RemoteEnforcement.Enabled {
+		if len(c.RemoteEnforcement.Targets) == 0 {
+			return fmt.Errorf("remote_enforcement.targets must not be empty when remote enforcement is enabled")
+		}
+		for i, target := range c.RemoteEnforcement.Targets {
+			if strings.TrimSpace(target.Name) == "" {
+				return fmt.Errorf("remote_enforcement.targets[%d].name must not be empty", i)
+			}
+			if strings.TrimSpace(target.Host) == "" {
+				return fmt.Errorf("remote_enforcement.targets[%d].host must not be empty", i)
+			}
+			if target.Port <= 0 {
+				return fmt.Errorf("remote_enforcement.targets[%d].port must be greater than zero", i)
+			}
+			if strings.TrimSpace(target.User) == "" {
+				return fmt.Errorf("remote_enforcement.targets[%d].user must not be empty", i)
+			}
+			switch strings.ToLower(strings.TrimSpace(target.Backend)) {
+			case "", "iptables", "nftables", "nft":
+			default:
+				return fmt.Errorf("remote_enforcement.targets[%d].backend must be one of: iptables, nftables, nft", i)
+			}
 		}
 	}
 
