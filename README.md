@@ -76,7 +76,7 @@ Important fields:
 - `log_file`: path to the Xray access log
 - `ip_limit`: max unique IPs allowed per email within the window
 - `window`: sliding duration used for counting unique IPs
-- `ban_duration`: local ban duration
+- `ban_duration`: global fallback ban duration
 - `ban_duration_ip_limit`: optional override for `ip_limit` bans
 - `ban_duration_torrent`: optional override for `torrent` bans
 - `enable_torrent_detection`: enable torrent-triggered bans from tagged Xray log lines
@@ -98,7 +98,7 @@ If your user identifier looks like `user.123456789` and the Telegram chat ID is 
 ```yaml
 send_webhook: true
 webhook_url: "https://api.telegram.org/bot<token>/sendMessage"
-webhook_template: '{"chat_id":"%s","text":"⚠️ Subscription sharing detected.\n\n🌐 IP: %s\n🛡 Action: %s\n⏱ Ban: %s"}'
+webhook_template: '{"chat_id":"%s","text":"⚠️ Subscription sharing detected.\n\n🌐 IP: %s\n🖥 Server: %s\n🛡 Action: %s\n⏱ Ban: %s"}'
 webhook_username_regex: '^\d+\.(\d+)$'
 webhook_notify_unban: false
 ```
@@ -119,7 +119,7 @@ The current implementation expects the tagged line to still contain the client a
 If you want different payloads for subscription sharing and torrent events, keep a generic fallback in `webhook_template` and override per reason:
 
 ```yaml
-webhook_template: '{"chat_id":"%s","text":"Action: %s, IP: %s, Duration: %s"}'
+webhook_template: '{"chat_id":"%s","text":"IP: %s\nServer: %s\nAction: %s\nDuration: %s"}'
 webhook_template_ip_limit: '{"chat_id":"%s","text":"Sharing detected.\nIP: %s\nServer: %s\nAction: %s\nBan: %s"}'
 webhook_template_torrent: '{"chat_id":"%s","text":"Torrent traffic detected.\nIP: %s\nServer: %s\nAction: %s\nBan: %s"}'
 webhook_notify_ip_limit: true

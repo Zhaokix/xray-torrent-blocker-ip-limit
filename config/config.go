@@ -54,7 +54,7 @@ func Default() *Config {
 		BanMode:                "iptables",
 		SendWebhook:            false,
 		WebhookURL:             "",
-		WebhookTemplate:        `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		WebhookTemplate:        `{"email":"%s","ip":"%s","server":"%s","action":"%s","duration":"%s"}`,
 		WebhookTemplateIPLimit: "",
 		WebhookTemplateTorrent: "",
 		WebhookNotifyIPLimit:   true,

@@ -34,7 +34,7 @@ ban_mode: "iptables"
 # Optional webhook notification settings.
 send_webhook: false
 webhook_url: ""
-webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_template: '{"email":"%s","ip":"%s","server":"%s","action":"%s","duration":"%s"}'
 webhook_template_ip_limit: ""
 webhook_template_torrent: ""
 webhook_notify_ip_limit: true
