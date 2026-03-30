@@ -35,6 +35,7 @@ The installer:
 
 - copies the binary to `/opt/xray-ip-limit/`
 - creates `/opt/xray-ip-limit/config.yaml` if it does not exist
+- tries to install `conntrack` when it is missing
 - installs the systemd unit
 - enables the service
 

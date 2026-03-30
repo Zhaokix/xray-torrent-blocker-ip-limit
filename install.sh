@@ -6,6 +6,34 @@ BINARY="xray-ip-limit"
 SERVICE="xray-ip-limit.service"
 CONFIG_PATH="$INSTALL_DIR/config.yaml"
 
+install_conntrack_if_missing() {
+    if command -v conntrack >/dev/null 2>&1; then
+        echo "==> conntrack is already installed"
+        return 0
+    fi
+
+    echo "==> conntrack not found, attempting to install it"
+
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y conntrack
+        return 0
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        dnf install -y conntrack-tools
+        return 0
+    fi
+
+    if command -v yum >/dev/null 2>&1; then
+        yum install -y conntrack-tools
+        return 0
+    fi
+
+    echo "Warning: could not install conntrack automatically"
+    echo "Warning: install conntrack manually to drop existing connections on ban"
+}
+
 echo "==> Installing xray-ip-limit..."
 
 if [ "$EUID" -ne 0 ]; then
@@ -18,6 +46,8 @@ if [ ! -f "$BINARY" ]; then
     echo "Build it first: go build -o xray-ip-limit ./cmd/xray-ip-limit/"
     exit 1
 fi
+
+install_conntrack_if_missing
 
 mkdir -p "$INSTALL_DIR"
 
