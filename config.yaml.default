@@ -27,6 +27,8 @@ ban_mode: "iptables"
 send_webhook: false
 webhook_url: ""
 webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_headers: {}
+webhook_username_regex: "^(.+)$"
 webhook_notify_unban: false
 
 # Dry-run mode logs ban and unban actions without touching the firewall.

@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"bytes"
+	"io"
 	"fmt"
 	"log/slog"
 	"net"
@@ -264,8 +265,20 @@ func (w *Watcher) cleanupLoop() {
 }
 
 func (w *Watcher) sendWebhook(email, ip, action string, duration string) {
-	body := fmt.Sprintf(w.cfg.WebhookTemplate, email, ip, action, duration)
-	resp, err := w.httpClient.Post(w.cfg.WebhookURL, "application/json", bytes.NewBufferString(body))
+	username := w.cfg.ProcessWebhookUsername(email)
+	body := fmt.Sprintf(w.cfg.WebhookTemplate, username, ip, action, duration)
+	req, err := http.NewRequest(http.MethodPost, w.cfg.WebhookURL, bytes.NewBufferString(body))
+	if err != nil {
+		slog.Error("webhook request creation failed", "err", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	for key, value := range w.cfg.WebhookHeaders {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := w.httpClient.Do(req)
 	if err != nil {
 		slog.Error("webhook failed", "err", err)
 		return
@@ -273,11 +286,12 @@ func (w *Watcher) sendWebhook(email, ip, action string, duration string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		slog.Warn("webhook returned non-success status", "status", resp.StatusCode, "action", action)
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		slog.Warn("webhook returned non-success status", "status", resp.StatusCode, "action", action, "body", string(responseBody))
 		return
 	}
 
-	slog.Info("webhook sent", "status", resp.StatusCode, "action", action)
+	slog.Info("webhook sent", "status", resp.StatusCode, "action", action, "username", username)
 }
 
 func extractAddressToken(value string) (string, bool) {

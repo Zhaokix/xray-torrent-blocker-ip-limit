@@ -65,6 +65,19 @@ Important fields:
 - `ban_mode`: `iptables`, `nftables`, or `nft`
 - `dry_run`: when `true`, no firewall changes are applied
 - `storage_dir`: local SQLite state directory
+- `webhook_username_regex`: regex used to transform the raw subscription identifier before it is inserted into the webhook payload
+
+### Telegram Webhook Example
+
+If your user identifier looks like `user.123456789` and the Telegram chat ID is the numeric suffix after the dot, use:
+
+```yaml
+send_webhook: true
+webhook_url: "https://api.telegram.org/bot<token>/sendMessage"
+webhook_template: '{"chat_id":"%s","text":"⚠️ Subscription sharing detected.\n\n🌐 IP: %s\n🛡 Action: %s\n⏱ Ban: %s"}'
+webhook_username_regex: '^\d+\.(\d+)$'
+webhook_notify_unban: false
+```
 
 ## Linux Smoke Check
 

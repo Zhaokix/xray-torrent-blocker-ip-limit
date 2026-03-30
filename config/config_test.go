@@ -29,6 +29,7 @@ storage_dir: "/opt/xray-ip-limit"
 send_webhook: true
 webhook_url: "https://example.com/hook"
 webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
+webhook_username_regex: "^(.+)$"
 `)
 
 	cfg, err := Load(path)
@@ -44,6 +45,27 @@ webhook_template: '{"email":"%s","ip":"%s","action":"%s","duration":"%s"}'
 	}
 	if cfg.BanDuration != 2*time.Hour {
 		t.Fatalf("expected ban_duration 2h, got %s", cfg.BanDuration)
+	}
+}
+
+func TestLoadSupportsLegacyWebhookTemplateKey(t *testing.T) {
+	path := writeTempConfig(t, `
+log_file: "/var/log/xray/access.log"
+ip_limit: 3
+window: "10m"
+ban_duration: "1h"
+storage_dir: "/opt/xray-ip-limit"
+send_webhook: true
+webhook_url: "https://example.com/hook"
+WebhookTemplate: '{"chat_id":"%s","text":"IP %s"}'
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.WebhookTemplate != `{"chat_id":"%s","text":"IP %s"}` {
+		t.Fatalf("expected legacy webhook template to load, got %q", cfg.WebhookTemplate)
 	}
 }
 
@@ -87,5 +109,31 @@ send_webhook: true
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected webhook validation error")
+	}
+}
+
+func TestProcessWebhookUsernameRegexSuffixAfterDot(t *testing.T) {
+	cfg := Default()
+	cfg.WebhookUsernameRegex = `^\d+\.(\d+)$`
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+
+	username := cfg.ProcessWebhookUsername("user.123456789")
+	if username != "7679754426" {
+		t.Fatalf("expected username 7679754426, got %q", username)
+	}
+}
+
+func TestProcessWebhookUsernameFallsBackToRawValue(t *testing.T) {
+	cfg := Default()
+	cfg.WebhookUsernameRegex = `^\d+\.(\d+)$`
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+
+	username := cfg.ProcessWebhookUsername("user.without_numeric_suffix")
+	if username != "user.without_numeric_suffix" {
+		t.Fatalf("expected raw username fallback, got %q", username)
 	}
 }

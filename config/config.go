@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -10,33 +11,38 @@ import (
 )
 
 type Config struct {
-	LogFile            string        `yaml:"log_file"`
-	IPLimit            int           `yaml:"ip_limit"`
-	Window             time.Duration `yaml:"window"`
-	BanDuration        time.Duration `yaml:"ban_duration"`
-	BypassIPs          []string      `yaml:"bypass_ips"`
-	BypassEmails       []string      `yaml:"bypass_emails"`
-	BanMode            string        `yaml:"ban_mode"`
-	SendWebhook        bool          `yaml:"send_webhook"`
-	WebhookURL         string        `yaml:"webhook_url"`
-	WebhookTemplate    string        `yaml:"webhook_template"`
-	WebhookNotifyUnban bool          `yaml:"webhook_notify_unban"`
-	DryRun             bool          `yaml:"dry_run"`
-	StorageDir         string        `yaml:"storage_dir"`
+	LogFile              string            `yaml:"log_file"`
+	IPLimit              int               `yaml:"ip_limit"`
+	Window               time.Duration     `yaml:"window"`
+	BanDuration          time.Duration     `yaml:"ban_duration"`
+	BypassIPs            []string          `yaml:"bypass_ips"`
+	BypassEmails         []string          `yaml:"bypass_emails"`
+	BanMode              string            `yaml:"ban_mode"`
+	SendWebhook          bool              `yaml:"send_webhook"`
+	WebhookURL           string            `yaml:"webhook_url"`
+	WebhookTemplate      string            `yaml:"webhook_template"`
+	WebhookHeaders       map[string]string `yaml:"webhook_headers"`
+	WebhookUsernameRegex string            `yaml:"webhook_username_regex"`
+	webhookUsernameExpr  *regexp.Regexp
+	WebhookNotifyUnban   bool   `yaml:"webhook_notify_unban"`
+	DryRun               bool   `yaml:"dry_run"`
+	StorageDir           string `yaml:"storage_dir"`
 }
 
 func Default() *Config {
 	return &Config{
-		LogFile:            "/var/log/xray/access.log",
-		IPLimit:            3,
-		Window:             10 * time.Minute,
-		BanDuration:        60 * time.Minute,
-		BypassIPs:          []string{"127.0.0.1", "::1"},
-		BypassEmails:       []string{},
-		BanMode:            "iptables",
-		SendWebhook:        false,
-		WebhookURL:         "",
-		WebhookTemplate:    `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		LogFile:              "/var/log/xray/access.log",
+		IPLimit:              3,
+		Window:               10 * time.Minute,
+		BanDuration:          60 * time.Minute,
+		BypassIPs:            []string{"127.0.0.1", "::1"},
+		BypassEmails:         []string{},
+		BanMode:              "iptables",
+		SendWebhook:          false,
+		WebhookURL:           "",
+		WebhookTemplate:      `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
+		WebhookHeaders:       map[string]string{},
+		WebhookUsernameRegex: `^(.+)$`,
 		WebhookNotifyUnban: false,
 		DryRun:             false,
 		StorageDir:         "/opt/xray-ip-limit",
@@ -45,19 +51,23 @@ func Default() *Config {
 
 // rawConfig keeps duration fields as strings so the loader can validate them explicitly.
 type rawConfig struct {
-	LogFile            string   `yaml:"log_file"`
-	IPLimit            *int     `yaml:"ip_limit"`
-	Window             string   `yaml:"window"`
-	BanDuration        string   `yaml:"ban_duration"`
-	BypassIPs          []string `yaml:"bypass_ips"`
-	BypassEmails       []string `yaml:"bypass_emails"`
-	BanMode            string   `yaml:"ban_mode"`
-	SendWebhook        bool     `yaml:"send_webhook"`
-	WebhookURL         string   `yaml:"webhook_url"`
-	WebhookTemplate    string   `yaml:"webhook_template"`
-	WebhookNotifyUnban bool     `yaml:"webhook_notify_unban"`
-	DryRun             bool     `yaml:"dry_run"`
-	StorageDir         string   `yaml:"storage_dir"`
+	LogFile               string            `yaml:"log_file"`
+	IPLimit               *int              `yaml:"ip_limit"`
+	Window                string            `yaml:"window"`
+	BanDuration           string            `yaml:"ban_duration"`
+	BypassIPs             []string          `yaml:"bypass_ips"`
+	BypassEmails          []string          `yaml:"bypass_emails"`
+	BanMode               string            `yaml:"ban_mode"`
+	SendWebhook           bool              `yaml:"send_webhook"`
+	WebhookURL            string            `yaml:"webhook_url"`
+	WebhookTemplate       string            `yaml:"webhook_template"`
+	LegacyWebhookTemplate string `yaml:"WebhookTemplate"`
+	WebhookHeaders        map[string]string `yaml:"webhook_headers"`
+	LegacyWebhookHeaders map[string]string `yaml:"WebhookHeaders"`
+	WebhookUsernameRegex string            `yaml:"webhook_username_regex"`
+	WebhookNotifyUnban   bool              `yaml:"webhook_notify_unban"`
+	DryRun               bool              `yaml:"dry_run"`
+	StorageDir           string            `yaml:"storage_dir"`
 }
 
 func Load(path string) (*Config, error) {
@@ -107,6 +117,16 @@ func Load(path string) (*Config, error) {
 	}
 	if raw.WebhookTemplate != "" {
 		cfg.WebhookTemplate = raw.WebhookTemplate
+	} else if raw.LegacyWebhookTemplate != "" {
+		cfg.WebhookTemplate = raw.LegacyWebhookTemplate
+	}
+	if raw.WebhookHeaders != nil {
+		cfg.WebhookHeaders = raw.WebhookHeaders
+	} else if raw.LegacyWebhookHeaders != nil {
+		cfg.WebhookHeaders = raw.LegacyWebhookHeaders
+	}
+	if raw.WebhookUsernameRegex != "" {
+		cfg.WebhookUsernameRegex = raw.WebhookUsernameRegex
 	}
 	cfg.WebhookNotifyUnban = raw.WebhookNotifyUnban
 	cfg.DryRun = raw.DryRun
@@ -153,5 +173,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	expr, err := regexp.Compile(c.WebhookUsernameRegex)
+	if err != nil {
+		return fmt.Errorf("webhook_username_regex is invalid: %w", err)
+	}
+	c.webhookUsernameExpr = expr
+
 	return nil
+}
+
+func (c *Config) ProcessWebhookUsername(value string) string {
+	if c.webhookUsernameExpr == nil {
+		return value
+	}
+
+	matches := c.webhookUsernameExpr.FindStringSubmatch(value)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	return value
 }
