@@ -38,6 +38,20 @@ The installer:
 - installs the systemd unit
 - enables the service
 
+## Install From GitHub Release
+
+The repository publishes a Linux amd64 tarball on tagged releases.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zhaokix/xray-torrent-blocker-ip-limit/main/install-release.sh | sudo bash
+```
+
+This installer downloads the latest release archive, extracts it to a temporary directory, and runs the bundled `install.sh`.
+
+Current default release asset:
+
+- `xray-ip-limit_linux_amd64.tar.gz`
+
 ## Configuration
 
 Start from [config.yaml.default](/e:/1-Development/IP-Torrent-Ban/xray-ip-limit/config.yaml.default).

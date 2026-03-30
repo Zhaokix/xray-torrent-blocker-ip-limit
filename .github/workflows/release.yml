@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build Linux amd64 binary
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist/xray-ip-limit
+          go build -o dist/xray-ip-limit/xray-ip-limit ./cmd/xray-ip-limit/
+          cp config.yaml.default dist/xray-ip-limit/
+          cp install.sh dist/xray-ip-limit/
+          cp xray-ip-limit.service dist/xray-ip-limit/
+          cp README.md dist/xray-ip-limit/
+
+      - name: Create tarball
+        run: |
+          cd dist
+          tar -czf xray-ip-limit_linux_amd64.tar.gz xray-ip-limit
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/xray-ip-limit_linux_amd64.tar.gz
+
