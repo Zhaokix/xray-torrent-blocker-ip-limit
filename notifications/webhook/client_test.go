@@ -23,9 +23,10 @@ func TestNotifyUsesReasonSpecificTemplate(t *testing.T) {
 	cfg := config.Default()
 	cfg.WebhookURL = server.URL
 	cfg.WebhookTemplate = `{"fallback":"%s"}`
-	cfg.WebhookTemplateIPLimit = `{"type":"ip_limit","chat_id":"%s","ip":"%s","action":"%s","duration":"%s"}`
-	cfg.WebhookTemplateTorrent = `{"type":"torrent","chat_id":"%s","ip":"%s","action":"%s","duration":"%s"}`
+	cfg.WebhookTemplateIPLimit = `{"type":"ip_limit","chat_id":"%s","ip":"%s","server":"%s","action":"%s","duration":"%s"}`
+	cfg.WebhookTemplateTorrent = `{"type":"torrent","chat_id":"%s","ip":"%s","server":"%s","action":"%s","duration":"%s"}`
 	cfg.WebhookHeaders = map[string]string{"X-Test": "1"}
+	cfg.WebhookServerName = "edge-1"
 
 	client := New(cfg)
 	client.Notify(events.NewTorrentBanEvent(
@@ -39,7 +40,7 @@ func TestNotifyUsesReasonSpecificTemplate(t *testing.T) {
 
 	select {
 	case body := <-requestBody:
-		expected := `{"type":"torrent","chat_id":"123","ip":"203.0.113.10","action":"ban","duration":"5m0s"}`
+		expected := `{"type":"torrent","chat_id":"123","ip":"203.0.113.10","server":"edge-1","action":"ban","duration":"5m0s"}`
 		if body != expected {
 			t.Fatalf("expected body %q, got %q", expected, body)
 		}
@@ -59,7 +60,8 @@ func TestNotifyFallsBackToDefaultTemplate(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.WebhookURL = server.URL
-	cfg.WebhookTemplate = `{"chat_id":"%s","ip":"%s","action":"%s","duration":"%s"}`
+	cfg.WebhookTemplate = `{"chat_id":"%s","ip":"%s","server":"%s","action":"%s","duration":"%s"}`
+	cfg.WebhookServerName = "edge-2"
 
 	client := New(cfg)
 	client.Notify(events.NewIPLimitBanEvent(
@@ -73,7 +75,7 @@ func TestNotifyFallsBackToDefaultTemplate(t *testing.T) {
 
 	select {
 	case body := <-requestBody:
-		expected := `{"chat_id":"123","ip":"203.0.113.11","action":"ban","duration":"2m0s"}`
+		expected := `{"chat_id":"123","ip":"203.0.113.11","server":"edge-2","action":"ban","duration":"2m0s"}`
 		if body != expected {
 			t.Fatalf("expected body %q, got %q", expected, body)
 		}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"xray-ip-limit/events"
 )
 
 type Config struct {
@@ -15,6 +16,8 @@ type Config struct {
 	IPLimit                int               `yaml:"ip_limit"`
 	Window                 time.Duration     `yaml:"window"`
 	BanDuration            time.Duration     `yaml:"ban_duration"`
+	BanDurationIPLimit     time.Duration     `yaml:"ban_duration_ip_limit"`
+	BanDurationTorrent     time.Duration     `yaml:"ban_duration_torrent"`
 	EnableTorrentDetection bool              `yaml:"enable_torrent_detection"`
 	TorrentTag             string            `yaml:"torrent_tag"`
 	BypassIPs              []string          `yaml:"bypass_ips"`
@@ -25,10 +28,13 @@ type Config struct {
 	WebhookTemplate        string            `yaml:"webhook_template"`
 	WebhookTemplateIPLimit string            `yaml:"webhook_template_ip_limit"`
 	WebhookTemplateTorrent string            `yaml:"webhook_template_torrent"`
+	WebhookNotifyIPLimit   bool              `yaml:"webhook_notify_ip_limit"`
+	WebhookNotifyTorrent   bool              `yaml:"webhook_notify_torrent"`
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
 	webhookUsernameExpr    *regexp.Regexp
 	WebhookNotifyUnban     bool   `yaml:"webhook_notify_unban"`
+	WebhookServerName      string `yaml:"webhook_server_name"`
 	DryRun                 bool   `yaml:"dry_run"`
 	StorageDir             string `yaml:"storage_dir"`
 }
@@ -39,6 +45,8 @@ func Default() *Config {
 		IPLimit:                3,
 		Window:                 10 * time.Minute,
 		BanDuration:            60 * time.Minute,
+		BanDurationIPLimit:     0,
+		BanDurationTorrent:     0,
 		EnableTorrentDetection: false,
 		TorrentTag:             "TORRENT",
 		BypassIPs:              []string{"127.0.0.1", "::1"},
@@ -49,9 +57,12 @@ func Default() *Config {
 		WebhookTemplate:        `{"email":"%s","ip":"%s","action":"%s","duration":"%s"}`,
 		WebhookTemplateIPLimit: "",
 		WebhookTemplateTorrent: "",
+		WebhookNotifyIPLimit:   true,
+		WebhookNotifyTorrent:   true,
 		WebhookHeaders:         map[string]string{},
 		WebhookUsernameRegex:   `^(.+)$`,
 		WebhookNotifyUnban:     false,
+		WebhookServerName:      "",
 		DryRun:                 false,
 		StorageDir:             "/opt/iptblocker",
 	}
@@ -63,6 +74,8 @@ type rawConfig struct {
 	IPLimit                *int              `yaml:"ip_limit"`
 	Window                 string            `yaml:"window"`
 	BanDuration            string            `yaml:"ban_duration"`
+	BanDurationIPLimit     string            `yaml:"ban_duration_ip_limit"`
+	BanDurationTorrent     string            `yaml:"ban_duration_torrent"`
 	EnableTorrentDetection bool              `yaml:"enable_torrent_detection"`
 	TorrentTag             *string           `yaml:"torrent_tag"`
 	BypassIPs              []string          `yaml:"bypass_ips"`
@@ -73,11 +86,14 @@ type rawConfig struct {
 	WebhookTemplate        string            `yaml:"webhook_template"`
 	WebhookTemplateIPLimit string            `yaml:"webhook_template_ip_limit"`
 	WebhookTemplateTorrent string            `yaml:"webhook_template_torrent"`
+	WebhookNotifyIPLimit   *bool             `yaml:"webhook_notify_ip_limit"`
+	WebhookNotifyTorrent   *bool             `yaml:"webhook_notify_torrent"`
 	LegacyWebhookTemplate  string            `yaml:"WebhookTemplate"`
 	WebhookHeaders         map[string]string `yaml:"webhook_headers"`
 	LegacyWebhookHeaders   map[string]string `yaml:"WebhookHeaders"`
 	WebhookUsernameRegex   string            `yaml:"webhook_username_regex"`
 	WebhookNotifyUnban     bool              `yaml:"webhook_notify_unban"`
+	WebhookServerName      string            `yaml:"webhook_server_name"`
 	DryRun                 bool              `yaml:"dry_run"`
 	StorageDir             string            `yaml:"storage_dir"`
 }
@@ -114,6 +130,20 @@ func Load(path string) (*Config, error) {
 		}
 		cfg.BanDuration = d
 	}
+	if raw.BanDurationIPLimit != "" {
+		d, err := time.ParseDuration(raw.BanDurationIPLimit)
+		if err != nil {
+			return nil, fmt.Errorf("parse ban_duration_ip_limit: %w", err)
+		}
+		cfg.BanDurationIPLimit = d
+	}
+	if raw.BanDurationTorrent != "" {
+		d, err := time.ParseDuration(raw.BanDurationTorrent)
+		if err != nil {
+			return nil, fmt.Errorf("parse ban_duration_torrent: %w", err)
+		}
+		cfg.BanDurationTorrent = d
+	}
 	cfg.EnableTorrentDetection = raw.EnableTorrentDetection
 	if raw.TorrentTag != nil {
 		cfg.TorrentTag = *raw.TorrentTag
@@ -142,6 +172,12 @@ func Load(path string) (*Config, error) {
 	if raw.WebhookTemplateTorrent != "" {
 		cfg.WebhookTemplateTorrent = raw.WebhookTemplateTorrent
 	}
+	if raw.WebhookNotifyIPLimit != nil {
+		cfg.WebhookNotifyIPLimit = *raw.WebhookNotifyIPLimit
+	}
+	if raw.WebhookNotifyTorrent != nil {
+		cfg.WebhookNotifyTorrent = *raw.WebhookNotifyTorrent
+	}
 	if raw.WebhookHeaders != nil {
 		cfg.WebhookHeaders = raw.WebhookHeaders
 	} else if raw.LegacyWebhookHeaders != nil {
@@ -151,6 +187,9 @@ func Load(path string) (*Config, error) {
 		cfg.WebhookUsernameRegex = raw.WebhookUsernameRegex
 	}
 	cfg.WebhookNotifyUnban = raw.WebhookNotifyUnban
+	if raw.WebhookServerName != "" {
+		cfg.WebhookServerName = raw.WebhookServerName
+	}
 	cfg.DryRun = raw.DryRun
 	if raw.StorageDir != "" {
 		cfg.StorageDir = raw.StorageDir
@@ -175,6 +214,12 @@ func (c *Config) Validate() error {
 	}
 	if c.BanDuration < 0 {
 		return fmt.Errorf("ban_duration must not be negative")
+	}
+	if c.BanDurationIPLimit < 0 {
+		return fmt.Errorf("ban_duration_ip_limit must not be negative")
+	}
+	if c.BanDurationTorrent < 0 {
+		return fmt.Errorf("ban_duration_torrent must not be negative")
 	}
 	if c.EnableTorrentDetection && strings.TrimSpace(c.TorrentTag) == "" {
 		return fmt.Errorf("torrent_tag must not be empty when enable_torrent_detection is enabled")
@@ -235,4 +280,47 @@ func (c *Config) WebhookTemplateForReason(reason string) string {
 	}
 
 	return c.WebhookTemplate
+}
+
+func (c *Config) ShouldNotify(reason events.Reason) bool {
+	if !c.SendWebhook {
+		return false
+	}
+
+	switch reason {
+	case events.ReasonIPLimit:
+		return c.WebhookNotifyIPLimit
+	case events.ReasonTorrent:
+		return c.WebhookNotifyTorrent
+	default:
+		return true
+	}
+}
+
+func (c *Config) BanDurationForReason(reason events.Reason) time.Duration {
+	switch reason {
+	case events.ReasonIPLimit:
+		if c.BanDurationIPLimit > 0 {
+			return c.BanDurationIPLimit
+		}
+	case events.ReasonTorrent:
+		if c.BanDurationTorrent > 0 {
+			return c.BanDurationTorrent
+		}
+	}
+
+	return c.BanDuration
+}
+
+func (c *Config) EffectiveWebhookServerName() string {
+	if strings.TrimSpace(c.WebhookServerName) != "" {
+		return c.WebhookServerName
+	}
+
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+
+	return host
 }

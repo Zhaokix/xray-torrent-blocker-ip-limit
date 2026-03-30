@@ -17,6 +17,7 @@ type Client struct {
 	defaultTemplate string
 	ipLimitTemplate string
 	torrentTemplate string
+	serverName      string
 	headers         map[string]string
 	httpClient      *http.Client
 }
@@ -32,6 +33,7 @@ func New(cfg *config.Config) *Client {
 		defaultTemplate: cfg.WebhookTemplate,
 		ipLimitTemplate: cfg.WebhookTemplateIPLimit,
 		torrentTemplate: cfg.WebhookTemplateTorrent,
+		serverName:      cfg.EffectiveWebhookServerName(),
 		headers:         headers,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 	}
@@ -42,6 +44,7 @@ func (c *Client) Notify(event events.Event) {
 		c.templateForReason(event.Reason),
 		event.ProcessedUsername,
 		event.ClientIP,
+		c.serverName,
 		string(event.Action),
 		event.BanDuration.String(),
 	)

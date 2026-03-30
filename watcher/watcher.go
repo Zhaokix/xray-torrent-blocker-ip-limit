@@ -115,7 +115,7 @@ func (w *Watcher) processLine(line string) {
 				torrentDecision.BanningIP,
 				w.cfg.LogFile,
 				now,
-				w.cfg.BanDuration,
+				w.cfg.BanDurationForReason(events.ReasonTorrent),
 			)
 
 			w.applyBan(event)
@@ -141,7 +141,7 @@ func (w *Watcher) processLine(line string) {
 		decision.BanningIP,
 		w.cfg.LogFile,
 		now,
-		w.cfg.BanDuration,
+		w.cfg.BanDurationForReason(events.ReasonIPLimit),
 	)
 
 	w.applyBan(event)
@@ -169,7 +169,7 @@ func (w *Watcher) applyBan(event events.Event) {
 		"expires", event.ExpiresAt.Format(time.RFC3339),
 	)
 
-	if w.notifier != nil {
+	if w.notifier != nil && w.cfg.ShouldNotify(event.Reason) {
 		go w.notifier.Notify(event)
 	}
 }
@@ -228,7 +228,7 @@ func (w *Watcher) unbanLoop() {
 				"email", event.RawUsername,
 				"processed_username", event.ProcessedUsername,
 			)
-			if w.notifier != nil && w.cfg.WebhookNotifyUnban {
+			if w.notifier != nil && w.cfg.WebhookNotifyUnban && w.cfg.ShouldNotify(event.Reason) {
 				go w.notifier.Notify(event)
 			}
 		}

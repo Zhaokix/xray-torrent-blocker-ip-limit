@@ -77,6 +77,8 @@ Important fields:
 - `ip_limit`: max unique IPs allowed per email within the window
 - `window`: sliding duration used for counting unique IPs
 - `ban_duration`: local ban duration
+- `ban_duration_ip_limit`: optional override for `ip_limit` bans
+- `ban_duration_torrent`: optional override for `torrent` bans
 - `enable_torrent_detection`: enable torrent-triggered bans from tagged Xray log lines
 - `torrent_tag`: string marker that identifies torrent traffic in the log, typically an Xray `outboundTag`
 - `ban_mode`: `iptables`, `nftables`, or `nft`
@@ -85,6 +87,9 @@ Important fields:
 - `webhook_username_regex`: regex used to transform the raw subscription identifier before it is inserted into the webhook payload
 - `webhook_template_ip_limit`: optional template override used only for `ip_limit` events
 - `webhook_template_torrent`: optional template override used only for `torrent` events
+- `webhook_notify_ip_limit`: enable or disable webhook delivery for `ip_limit` events
+- `webhook_notify_torrent`: enable or disable webhook delivery for `torrent` events
+- `webhook_server_name`: optional hostname override used in webhook payloads; when empty, `iptblocker` uses the system hostname
 
 ### Telegram Webhook Example
 
@@ -115,16 +120,30 @@ If you want different payloads for subscription sharing and torrent events, keep
 
 ```yaml
 webhook_template: '{"chat_id":"%s","text":"Action: %s, IP: %s, Duration: %s"}'
-webhook_template_ip_limit: '{"chat_id":"%s","text":"Sharing detected.\nIP: %s\nAction: %s\nBan: %s"}'
-webhook_template_torrent: '{"chat_id":"%s","text":"Torrent traffic detected.\nIP: %s\nAction: %s\nBan: %s"}'
+webhook_template_ip_limit: '{"chat_id":"%s","text":"Sharing detected.\nIP: %s\nServer: %s\nAction: %s\nBan: %s"}'
+webhook_template_torrent: '{"chat_id":"%s","text":"Torrent traffic detected.\nIP: %s\nServer: %s\nAction: %s\nBan: %s"}'
+webhook_notify_ip_limit: true
+webhook_notify_torrent: false
+webhook_server_name: "usa-edge-1"
 ```
 
 All webhook templates currently receive the same placeholders in this order:
 
 - `%s`: processed username
 - `%s`: client IP
+- `%s`: server name
 - `%s`: action
 - `%s`: ban duration
+
+### Reason-Specific Ban Duration
+
+If you want a stricter torrent ban than a normal IP-limit ban, keep the global fallback and override only what you need:
+
+```yaml
+ban_duration: "30m"
+ban_duration_ip_limit: "15m"
+ban_duration_torrent: "24h"
+```
 
 ## Linux Smoke Check
 
