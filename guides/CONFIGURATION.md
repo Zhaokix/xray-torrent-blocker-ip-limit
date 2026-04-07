@@ -52,6 +52,8 @@ ban_duration_torrent: "24h"
 
 ## Bypass Lists
 
+Bypass lists affect `ip_limit` enforcement only. Torrent-tagged events ignore bypass rules and are always enforced.
+
 Never ban specific IPs:
 
 ```yaml

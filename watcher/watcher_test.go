@@ -229,3 +229,38 @@ func TestProcessLineSkipsBanForProcessedUsernameBypass(t *testing.T) {
 		t.Fatalf("expected no active bans, got %d", len(active))
 	}
 }
+
+func TestProcessLineTorrentIgnoresProcessedUsernameBypass(t *testing.T) {
+	cfg := config.Default()
+	cfg.EnableTorrentDetection = true
+	cfg.TorrentTag = "TORRENT"
+	cfg.WebhookUsernameRegex = `^\d+\.(\d+)$`
+	cfg.BypassProcessedUsers = []string{"7679754426"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+
+	fw, err := firewall.NewManager("iptables", true)
+	if err != nil {
+		t.Fatalf("NewManager returned error: %v", err)
+	}
+
+	st, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage.New returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	})
+
+	w := New(cfg, st, fw)
+	email := "123412312.7679754426"
+
+	w.processLine(`2026/03/30 10:00:00 from tcp:203.0.113.9:443 accepted email: ` + email + ` outboundTag=TORRENT`)
+
+	if !st.IsBanned("203.0.113.9") {
+		t.Fatal("expected torrent detection to ignore processed username bypass")
+	}
+}

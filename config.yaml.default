@@ -20,15 +20,15 @@ ban_duration_torrent: "0s"
 enable_torrent_detection: false
 torrent_tag: "TORRENT"
 
-# IP addresses that must never be banned.
+# IP addresses that must never be banned by ip_limit enforcement.
 bypass_ips:
   - "127.0.0.1"
   - "::1"
 
-# Subscription emails that must never be banned.
+# Subscription emails that must never be banned by ip_limit enforcement.
 bypass_emails: []
 
-# Processed usernames that must never be banned after webhook_username_regex is applied.
+# Processed usernames that must never be banned by ip_limit enforcement after webhook_username_regex is applied.
 # Useful when your raw identifier looks like "prefix.123456789" and you want to bypass by the suffix only.
 bypass_processed_usernames: []
 

@@ -105,15 +105,6 @@ func (w *Watcher) processLine(line string) {
 		return
 	}
 
-	if _, ok := w.bypass[entry.ClientIP]; ok {
-		return
-	}
-	if _, ok := w.bypassEmails[entry.Username]; ok {
-		return
-	}
-	if _, ok := w.bypassUsers[w.cfg.ProcessWebhookUsername(entry.Username)]; ok {
-		return
-	}
 	if w.storage.IsBanned(entry.ClientIP) {
 		return
 	}
@@ -144,6 +135,16 @@ func (w *Watcher) processLine(line string) {
 			})
 			return
 		}
+	}
+
+	if _, ok := w.bypass[entry.ClientIP]; ok {
+		return
+	}
+	if _, ok := w.bypassEmails[entry.Username]; ok {
+		return
+	}
+	if _, ok := w.bypassUsers[w.cfg.ProcessWebhookUsername(entry.Username)]; ok {
+		return
 	}
 
 	decision := w.detector.Observe(entry.Username, entry.ClientIP, now)
