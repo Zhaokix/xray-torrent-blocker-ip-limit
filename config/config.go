@@ -22,6 +22,7 @@ type Config struct {
 	TorrentTag             string            `yaml:"torrent_tag"`
 	BypassIPs              []string          `yaml:"bypass_ips"`
 	BypassEmails           []string          `yaml:"bypass_emails"`
+	BypassProcessedUsers   []string          `yaml:"bypass_processed_usernames"`
 	BanMode                string            `yaml:"ban_mode"`
 	SendWebhook            bool              `yaml:"send_webhook"`
 	WebhookURL             string            `yaml:"webhook_url"`
@@ -83,6 +84,7 @@ func Default() *Config {
 		TorrentTag:             "TORRENT",
 		BypassIPs:              []string{"127.0.0.1", "::1"},
 		BypassEmails:           []string{},
+		BypassProcessedUsers:   []string{},
 		BanMode:                "iptables",
 		SendWebhook:            false,
 		WebhookURL:             "",
@@ -143,6 +145,7 @@ type rawConfig struct {
 	TorrentTag             *string               `yaml:"torrent_tag"`
 	BypassIPs              []string              `yaml:"bypass_ips"`
 	BypassEmails           []string              `yaml:"bypass_emails"`
+	BypassProcessedUsers   []string              `yaml:"bypass_processed_usernames"`
 	BanMode                string                `yaml:"ban_mode"`
 	SendWebhook            bool                  `yaml:"send_webhook"`
 	WebhookURL             string                `yaml:"webhook_url"`
@@ -240,6 +243,9 @@ func Load(path string) (*Config, error) {
 	}
 	if raw.BypassEmails != nil {
 		cfg.BypassEmails = raw.BypassEmails
+	}
+	if raw.BypassProcessedUsers != nil {
+		cfg.BypassProcessedUsers = raw.BypassProcessedUsers
 	}
 	if raw.BanMode != "" {
 		cfg.BanMode = raw.BanMode

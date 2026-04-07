@@ -29,6 +29,7 @@ type Watcher struct {
 	torrentDetector *torrent.Detector
 	bypass          map[string]struct{}
 	bypassEmails    map[string]struct{}
+	bypassUsers     map[string]struct{}
 }
 
 func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher {
@@ -39,6 +40,10 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 	bypassEmails := make(map[string]struct{})
 	for _, email := range cfg.BypassEmails {
 		bypassEmails[email] = struct{}{}
+	}
+	bypassUsers := make(map[string]struct{})
+	for _, username := range cfg.BypassProcessedUsers {
+		bypassUsers[username] = struct{}{}
 	}
 
 	var notifier *webhook.Client
@@ -60,6 +65,7 @@ func New(cfg *config.Config, st *storage.Storage, fw *firewall.Manager) *Watcher
 		torrentDetector: torrent.New(cfg.TorrentTag),
 		bypass:          bypass,
 		bypassEmails:    bypassEmails,
+		bypassUsers:     bypassUsers,
 	}
 }
 
@@ -103,6 +109,9 @@ func (w *Watcher) processLine(line string) {
 		return
 	}
 	if _, ok := w.bypassEmails[entry.Username]; ok {
+		return
+	}
+	if _, ok := w.bypassUsers[w.cfg.ProcessWebhookUsername(entry.Username)]; ok {
 		return
 	}
 	if w.storage.IsBanned(entry.ClientIP) {

@@ -30,6 +30,8 @@ ban_duration_ip_limit: "30m"
 ban_duration_torrent: "4h"
 enable_torrent_detection: true
 torrent_tag: "TORRENT"
+bypass_processed_usernames:
+  - "123456789"
 ban_mode: "iptables"
 storage_dir: "/opt/iptblocker"
 send_webhook: true
@@ -118,6 +120,9 @@ remote_enforcement:
 	}
 	if cfg.TorrentTag != "TORRENT" {
 		t.Fatalf("expected torrent_tag TORRENT, got %q", cfg.TorrentTag)
+	}
+	if len(cfg.BypassProcessedUsers) != 1 || cfg.BypassProcessedUsers[0] != "123456789" {
+		t.Fatalf("expected bypass_processed_usernames to load, got %#v", cfg.BypassProcessedUsers)
 	}
 	if !cfg.RemoteEnforcement.Enabled {
 		t.Fatal("expected remote enforcement to be enabled")

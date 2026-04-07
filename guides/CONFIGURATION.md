@@ -66,3 +66,13 @@ Never ban specific usernames:
 bypass_emails:
   - "admin@example.com"
 ```
+
+Never ban specific processed usernames after `webhook_username_regex` is applied:
+
+```yaml
+webhook_username_regex: '^\d+\.(\d+)$'
+bypass_processed_usernames:
+  - "7679754426"
+```
+
+This is useful when your raw identifier in the Xray log looks like `123412312.7679754426`, but you want the bypass rule to match only the Telegram ID suffix.

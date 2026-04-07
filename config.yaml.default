@@ -28,6 +28,10 @@ bypass_ips:
 # Subscription emails that must never be banned.
 bypass_emails: []
 
+# Processed usernames that must never be banned after webhook_username_regex is applied.
+# Useful when your raw identifier looks like "prefix.123456789" and you want to bypass by the suffix only.
+bypass_processed_usernames: []
+
 # Firewall backend used for local bans: iptables, nftables, or nft.
 ban_mode: "iptables"
 
