@@ -15,7 +15,7 @@ remote_enforcement:
   use_sudo: true
   targets:
     - name: "edge-1"
-      host: "198.51.100.10"
+      host: "edge-1"
       port: 22
       user: "iptblocker"
       backend: "iptables"
@@ -42,6 +42,13 @@ ssh -p 2222 iptblocker@198.51.100.10 'iptables ...'
 
 When you set `ssh_config_path`, `ssh_key_path`, `known_hosts_path`, or `use_sudo: true`, `iptblocker` switches to the extended SSH path.
 
+## Operational Notes
+
+- If `remote_enforcement.targets[].host` is an SSH alias like `edge-1`, it must match a `Host edge-1` block inside `ssh_config_path`.
+- If `remote_enforcement.targets[].host` is a raw IP or hostname, `ssh_config_path` is optional. In that case `ssh_key_path` and `known_hosts_path` are usually enough.
+- Set `use_sudo: true` when the remote user is allowed to run firewall commands only through passwordless `sudo`.
+- For non-default SSH ports, `known_hosts` must contain an entry for the exact host and port, for example `[198.51.100.10]:2222`.
+
 ## SSH Key Setup
 
 Generate a dedicated key on the node where `iptblocker` runs:
@@ -52,9 +59,11 @@ chmod 600 /opt/iptblocker/id_ed25519
 chmod 644 /opt/iptblocker/id_ed25519.pub
 ```
 
+The service expects a non-interactive key. Do not use a passphrase-protected private key for unattended remote enforcement.
+
 ## SSH Config
 
-Example `/root/.ssh/config` entry:
+Example `ssh_config` entry:
 
 ```sshconfig
 Host edge-1
@@ -62,12 +71,13 @@ Host edge-1
   User iptblocker
   Port 22
   IdentityFile /opt/iptblocker/id_ed25519
+  UserKnownHostsFile /opt/iptblocker/known_hosts
   IdentitiesOnly yes
   BatchMode yes
   StrictHostKeyChecking yes
 ```
 
-If you use an SSH alias like `edge-1`, you can set `host: "edge-1"` in `remote_enforcement.targets`.
+If you use an SSH alias like `edge-1`, set `host: "edge-1"` in `remote_enforcement.targets`.
 
 ## Remote User Setup
 
@@ -108,21 +118,7 @@ EOF
 sudo chmod 440 /etc/sudoers.d/iptblocker
 ```
 
-## Smoke Check
-
-Before enabling remote enforcement in `config.yaml`, verify SSH access manually from the `iptblocker` node:
-
-```bash
-ssh edge-1 'sudo iptables -S XRAY_IP_LIMIT_BLOCKED'
-```
-
-Or for `nftables`:
-
-```bash
-ssh edge-1 'sudo nft list ruleset'
-```
-
-## More Production-Friendly SSH Layout
+## Recommended SSH Layout
 
 Keep SSH material inside `/opt/iptblocker`:
 
@@ -151,25 +147,49 @@ Host edge-1
 Populate `known_hosts`:
 
 ```bash
-ssh-keyscan -H 198.51.100.10 >> /opt/iptblocker/known_hosts
+ssh-keyscan -p 22 -H 198.51.100.10 >> /opt/iptblocker/known_hosts
 chmod 600 /opt/iptblocker/known_hosts
 ```
 
-Systemd override:
+For a non-default SSH port, include the port explicitly:
 
 ```bash
-sudo systemctl edit iptblocker
+ssh-keyscan -p 2222 -H 198.51.100.10 >> /opt/iptblocker/known_hosts
+chmod 600 /opt/iptblocker/known_hosts
 ```
 
-```ini
-[Service]
-Environment="HOME=/opt/iptblocker"
-Environment="GIT_SSH_COMMAND=ssh -F /opt/iptblocker/ssh_config"
-```
+## Smoke Check
 
-Then:
+Before enabling remote enforcement in `config.yaml`, verify SSH access manually from the `iptblocker` node using the same SSH material that the daemon will use.
+
+### `iptables` target with `ssh_config_path`
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart iptblocker
+sudo ssh -F /opt/iptblocker/ssh_config edge-1 'sudo iptables -S XRAY_IP_LIMIT_BLOCKED'
 ```
+
+### `nftables` target with `ssh_config_path`
+
+```bash
+sudo ssh -F /opt/iptblocker/ssh_config edge-1 'sudo nft list ruleset'
+```
+
+### Raw host without SSH alias
+
+If `remote_enforcement.targets[].host` is not an alias from `ssh_config`, verify using the key and known_hosts files directly:
+
+```bash
+sudo ssh -i /opt/iptblocker/id_ed25519 \
+  -o UserKnownHostsFile=/opt/iptblocker/known_hosts \
+  -o StrictHostKeyChecking=yes \
+  -p 2222 iptblocker@198.51.100.10 \
+  'sudo iptables -S XRAY_IP_LIMIT_BLOCKED'
+```
+
+### What must work before enabling remote enforcement
+
+- SSH must connect without interactive questions
+- the remote command must run successfully with the same key/config files that `iptblocker` will use
+- if you rely on `sudo`, the remote user must be able to run the firewall command without a password
+
+If the manual smoke-check command fails, `iptblocker` remote enforcement will also fail.

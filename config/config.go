@@ -521,6 +521,7 @@ func isSupportedAdminNotificationField(field string) bool {
 		"action",
 		"username",
 		"processed_username",
+		"client_ip",
 		"server",
 		"source",
 		"ban_duration",

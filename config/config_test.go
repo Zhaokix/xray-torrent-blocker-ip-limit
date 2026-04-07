@@ -299,7 +299,7 @@ admin_notifications:
 	}
 }
 
-func TestLoadRejectsUnsupportedAdminNotificationField(t *testing.T) {
+func TestLoadAllowsClientIPAdminNotificationField(t *testing.T) {
 	path := writeTempConfig(t, `
 log_file: "/var/log/xray/access.log"
 ip_limit: 3
@@ -314,8 +314,8 @@ admin_notifications:
     - "client_ip"
 `)
 
-	if _, err := Load(path); err == nil {
-		t.Fatal("expected unsupported admin notification field validation error")
+	if _, err := Load(path); err != nil {
+		t.Fatalf("expected client_ip to be allowed in admin notification fields, got %v", err)
 	}
 }
 

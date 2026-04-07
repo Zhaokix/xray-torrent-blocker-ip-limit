@@ -114,6 +114,8 @@ func (c *Client) buildPayload(data Data) map[string]any {
 			payload[field] = data.Event.RawUsername
 		case "processed_username":
 			payload[field] = data.Event.ProcessedUsername
+		case "client_ip":
+			payload[field] = data.Event.ClientIP
 		case "server":
 			payload[field] = data.ServerName
 		case "source":
@@ -187,6 +189,7 @@ func applyTemplate(template string, data Data) string {
 		"{{action}}", string(data.Event.Action),
 		"{{username}}", data.Event.RawUsername,
 		"{{processed_username}}", data.Event.ProcessedUsername,
+		"{{client_ip}}", data.Event.ClientIP,
 		"{{server}}", data.ServerName,
 		"{{source}}", data.Event.Source,
 		"{{ban_duration}}", data.Event.BanDuration.String(),

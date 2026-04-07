@@ -28,7 +28,7 @@ func TestNotifySendsSelectedAdminFields(t *testing.T) {
 	cfg := config.Default()
 	cfg.AdminNotifications.Enabled = true
 	cfg.AdminNotifications.WebhookURL = server.URL
-	cfg.AdminNotifications.Fields = []string{"reason", "username", "server", "unique_ips", "limit", "window", "ban_duration"}
+	cfg.AdminNotifications.Fields = []string{"reason", "username", "client_ip", "server", "unique_ips", "limit", "window", "ban_duration"}
 
 	client := New(cfg)
 	client.Notify(Data{
@@ -54,6 +54,9 @@ func TestNotifySendsSelectedAdminFields(t *testing.T) {
 		if payload["username"] != "user@example.com" {
 			t.Fatalf("expected username user@example.com, got %#v", payload["username"])
 		}
+		if payload["client_ip"] != "203.0.113.10" {
+			t.Fatalf("expected client_ip 203.0.113.10, got %#v", payload["client_ip"])
+		}
 		if payload["server"] != "edge-1" {
 			t.Fatalf("expected server edge-1, got %#v", payload["server"])
 		}
@@ -68,9 +71,6 @@ func TestNotifySendsSelectedAdminFields(t *testing.T) {
 		}
 		if got, ok := payload["limit"].(float64); !ok || got != 1 {
 			t.Fatalf("expected limit 1, got %#v", payload["limit"])
-		}
-		if _, exists := payload["client_ip"]; exists {
-			t.Fatal("did not expect client_ip in admin payload")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected admin webhook request to be received")
@@ -135,7 +135,7 @@ func TestNotifyUsesReasonSpecificTemplateForTelegramStyleBody(t *testing.T) {
 	cfg := config.Default()
 	cfg.AdminNotifications.Enabled = true
 	cfg.AdminNotifications.WebhookURL = server.URL
-	cfg.AdminNotifications.TemplateIPLimit = `{"chat_id":"123456789","text":"Violation: {{reason}}\nUser: {{username}}\nServer: {{server}}\nUnique IPs: {{unique_ips}}\nLimit: {{limit}}\nWindow: {{window}}\nAction: {{action}}\nDuration: {{ban_duration}}"}`
+	cfg.AdminNotifications.TemplateIPLimit = `{"chat_id":"123456789","text":"Violation: {{reason}}\nUser: {{username}}\nIP: {{client_ip}}\nServer: {{server}}\nUnique IPs: {{unique_ips}}\nLimit: {{limit}}\nWindow: {{window}}\nAction: {{action}}\nDuration: {{ban_duration}}"}`
 	cfg.AdminNotifications.Fields = nil
 
 	client := New(cfg)
@@ -156,7 +156,7 @@ func TestNotifyUsesReasonSpecificTemplateForTelegramStyleBody(t *testing.T) {
 
 	select {
 	case body := <-requestBody:
-		expected := "{\"chat_id\":\"123456789\",\"text\":\"Violation: ip_limit\\nUser: user@example.com\\nServer: usa-edge-1\\nUnique IPs: 10\\nLimit: 1\\nWindow: 5m0s\\nAction: ban\\nDuration: 15m0s\"}"
+		expected := "{\"chat_id\":\"123456789\",\"text\":\"Violation: ip_limit\\nUser: user@example.com\\nIP: 203.0.113.10\\nServer: usa-edge-1\\nUnique IPs: 10\\nLimit: 1\\nWindow: 5m0s\\nAction: ban\\nDuration: 15m0s\"}"
 		if body != expected {
 			t.Fatalf("expected body %q, got %q", expected, body)
 		}

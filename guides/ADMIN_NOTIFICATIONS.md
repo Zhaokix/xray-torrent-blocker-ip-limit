@@ -15,7 +15,7 @@ This guide covers the separate admin notification channel configured through `ad
 
 ## JSON Field Mode
 
-If you want a structured admin webhook without client IP:
+If you want a structured admin webhook:
 
 ```yaml
 admin_notifications:
@@ -27,6 +27,7 @@ admin_notifications:
     - "reason"
     - "action"
     - "username"
+    - "client_ip"
     - "server"
     - "unique_ips"
     - "limit"
@@ -41,6 +42,7 @@ Supported fields:
 - `action`
 - `username`
 - `processed_username`
+- `client_ip`
 - `server`
 - `source`
 - `ban_duration`
@@ -55,8 +57,6 @@ Supported fields:
 - `distribution_full_success`
 - `distribution_partial_failure`
 
-`client_ip` is intentionally not supported for admin notifications.
-
 ## Template Mode
 
 If you want `iptblocker` to send a normal Telegram `sendMessage` body directly:
@@ -67,8 +67,8 @@ admin_notifications:
   webhook_url: "https://api.telegram.org/bot<token>/sendMessage"
   headers:
     Content-Type: "application/json"
-  template_ip_limit: '{"chat_id":"123456789","text":"Subscription sharing detected.\n\nUser: {{username}}\nServer: {{server}}\nUnique IPs: {{unique_ips}}\nLimit: {{limit}}\nWindow: {{window}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
-  template_torrent: '{"chat_id":"123456789","text":"Torrent traffic detected.\n\nUser: {{username}}\nServer: {{server}}\nTag: {{torrent_tag}}\nSource: {{source}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
+  template_ip_limit: '{"chat_id":"123456789","text":"Subscription sharing detected.\n\nUser: {{username}}\nIP: {{client_ip}}\nServer: {{server}}\nUnique IPs: {{unique_ips}}\nLimit: {{limit}}\nWindow: {{window}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
+  template_torrent: '{"chat_id":"123456789","text":"Torrent traffic detected.\n\nUser: {{username}}\nIP: {{client_ip}}\nServer: {{server}}\nTag: {{torrent_tag}}\nSource: {{source}}\nAction: {{action}}\nBan duration: {{ban_duration}}"}'
   notify_unban: false
 ```
 
@@ -78,6 +78,7 @@ admin_notifications:
 - `{{action}}`
 - `{{username}}`
 - `{{processed_username}}`
+- `{{client_ip}}`
 - `{{server}}`
 - `{{source}}`
 - `{{ban_duration}}`

@@ -130,7 +130,7 @@ func TestProcessLineSendsAdminNotificationForIPLimit(t *testing.T) {
 	cfg.BanDuration = 15 * time.Minute
 	cfg.AdminNotifications.Enabled = true
 	cfg.AdminNotifications.WebhookURL = server.URL
-	cfg.AdminNotifications.Fields = []string{"reason", "username", "server", "unique_ips", "limit", "window", "ban_duration"}
+	cfg.AdminNotifications.Fields = []string{"reason", "username", "client_ip", "server", "unique_ips", "limit", "window", "ban_duration"}
 	cfg.WebhookServerName = "usa-edge-1"
 
 	fw, err := firewall.NewManager("iptables", true)
@@ -162,6 +162,9 @@ func TestProcessLineSendsAdminNotificationForIPLimit(t *testing.T) {
 		if payload["username"] != email {
 			t.Fatalf("expected username %q, got %#v", email, payload["username"])
 		}
+		if payload["client_ip"] != "203.0.113.2" {
+			t.Fatalf("expected client_ip 203.0.113.2, got %#v", payload["client_ip"])
+		}
 		if payload["server"] != "usa-edge-1" {
 			t.Fatalf("expected server usa-edge-1, got %#v", payload["server"])
 		}
@@ -176,9 +179,6 @@ func TestProcessLineSendsAdminNotificationForIPLimit(t *testing.T) {
 		}
 		if payload["window"] != "5m0s" {
 			t.Fatalf("expected window 5m0s, got %#v", payload["window"])
-		}
-		if _, exists := payload["client_ip"]; exists {
-			t.Fatal("did not expect client_ip in admin payload")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected admin notification to be received")
