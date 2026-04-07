@@ -28,6 +28,8 @@ The installer:
 - creates `/opt/iptblocker/config.yaml` if it does not exist
 - tries to install `conntrack` when it is missing
 - installs the systemd unit
+- stops `iptblocker.service` before replacing the binary if the service is running
+- restarts `iptblocker.service` automatically after the update if it was running before
 - enables the service
 
 ## Install From GitHub Release
@@ -58,6 +60,8 @@ This project was built with ideas and reference materials from:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Zhaokix/xray-torrent-blocker-ip-limit/main/install-release.sh | sudo bash
 ```
+
+If `iptblocker` is already running as a systemd service, the installer will stop it before replacing the binary and start it again automatically after the update.
 
 2. Edit the main config:
 

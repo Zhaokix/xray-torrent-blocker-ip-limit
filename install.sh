@@ -5,6 +5,7 @@ INSTALL_DIR="/opt/iptblocker"
 BINARY="iptblocker"
 SERVICE="iptblocker.service"
 CONFIG_PATH="$INSTALL_DIR/config.yaml"
+WAS_ACTIVE=0
 
 install_conntrack_if_missing() {
     if command -v conntrack >/dev/null 2>&1; then
@@ -34,6 +35,21 @@ install_conntrack_if_missing() {
     echo "Warning: install conntrack manually to drop existing connections on ban"
 }
 
+stop_service_if_running() {
+    if systemctl list-unit-files "$SERVICE" >/dev/null 2>&1 && systemctl is-active --quiet "$SERVICE"; then
+        echo "==> Stopping running $SERVICE before update"
+        systemctl stop "$SERVICE"
+        WAS_ACTIVE=1
+    fi
+}
+
+restart_service_if_needed() {
+    if [ "$WAS_ACTIVE" -eq 1 ]; then
+        echo "==> Restarting $SERVICE"
+        systemctl restart "$SERVICE"
+    fi
+}
+
 echo "==> Installing iptblocker..."
 
 if [ "$EUID" -ne 0 ]; then
@@ -48,6 +64,7 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 install_conntrack_if_missing
+stop_service_if_running
 
 mkdir -p "$INSTALL_DIR"
 
@@ -65,6 +82,7 @@ fi
 cp "$SERVICE" "/etc/systemd/system/$SERVICE"
 systemctl daemon-reload
 systemctl enable "$SERVICE"
+restart_service_if_needed
 
 echo ""
 echo "==> Installation complete"
