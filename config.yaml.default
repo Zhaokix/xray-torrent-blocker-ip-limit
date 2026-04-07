@@ -76,4 +76,8 @@ remote_enforcement:
   enabled: false
   mode: "local_only"
   connect_timeout: "10s"
+  ssh_config_path: ""
+  ssh_key_path: ""
+  known_hosts_path: ""
+  use_sudo: false
   targets: []

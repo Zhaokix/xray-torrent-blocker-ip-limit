@@ -9,6 +9,10 @@ remote_enforcement:
   enabled: true
   mode: "local_and_remote"
   connect_timeout: "10s"
+  ssh_config_path: "/opt/iptblocker/ssh_config"
+  ssh_key_path: "/opt/iptblocker/id_ed25519"
+  known_hosts_path: "/opt/iptblocker/known_hosts"
+  use_sudo: true
   targets:
     - name: "edge-1"
       host: "198.51.100.10"
@@ -29,6 +33,14 @@ Supported modes:
 - `local_and_remote`
 
 Use remote enforcement only when the client IP visible in Xray logs is trustworthy for the target topology.
+
+The SSH-related fields are optional. If you leave them empty and keep `use_sudo: false`, the old behavior remains:
+
+```bash
+ssh -p 2222 iptblocker@198.51.100.10 'iptables ...'
+```
+
+When you set `ssh_config_path`, `ssh_key_path`, `known_hosts_path`, or `use_sudo: true`, `iptblocker` switches to the extended SSH path.
 
 ## SSH Key Setup
 

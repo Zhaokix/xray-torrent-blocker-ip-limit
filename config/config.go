@@ -56,6 +56,10 @@ type RemoteEnforcement struct {
 	Enabled        bool           `yaml:"enabled"`
 	Mode           string         `yaml:"mode"`
 	ConnectTimeout time.Duration  `yaml:"connect_timeout"`
+	SSHConfigPath  string         `yaml:"ssh_config_path"`
+	SSHKeyPath     string         `yaml:"ssh_key_path"`
+	KnownHostsPath string         `yaml:"known_hosts_path"`
+	UseSudo        bool           `yaml:"use_sudo"`
 	Targets        []RemoteTarget `yaml:"targets"`
 }
 
@@ -118,6 +122,10 @@ func Default() *Config {
 			Enabled:        false,
 			Mode:           "local_only",
 			ConnectTimeout: 10 * time.Second,
+			SSHConfigPath:  "",
+			SSHKeyPath:     "",
+			KnownHostsPath: "",
+			UseSudo:        false,
 			Targets:        nil,
 		},
 	}
@@ -170,6 +178,10 @@ type rawRemoteEnforcement struct {
 	Enabled        bool           `yaml:"enabled"`
 	Mode           string         `yaml:"mode"`
 	ConnectTimeout string         `yaml:"connect_timeout"`
+	SSHConfigPath  string         `yaml:"ssh_config_path"`
+	SSHKeyPath     string         `yaml:"ssh_key_path"`
+	KnownHostsPath string         `yaml:"known_hosts_path"`
+	UseSudo        bool           `yaml:"use_sudo"`
 	Targets        []RemoteTarget `yaml:"targets"`
 }
 
@@ -300,6 +312,16 @@ func Load(path string) (*Config, error) {
 		}
 		cfg.RemoteEnforcement.ConnectTimeout = d
 	}
+	if raw.RemoteEnforcement.SSHConfigPath != "" {
+		cfg.RemoteEnforcement.SSHConfigPath = raw.RemoteEnforcement.SSHConfigPath
+	}
+	if raw.RemoteEnforcement.SSHKeyPath != "" {
+		cfg.RemoteEnforcement.SSHKeyPath = raw.RemoteEnforcement.SSHKeyPath
+	}
+	if raw.RemoteEnforcement.KnownHostsPath != "" {
+		cfg.RemoteEnforcement.KnownHostsPath = raw.RemoteEnforcement.KnownHostsPath
+	}
+	cfg.RemoteEnforcement.UseSudo = raw.RemoteEnforcement.UseSudo
 	if raw.RemoteEnforcement.Targets != nil {
 		cfg.RemoteEnforcement.Targets = raw.RemoteEnforcement.Targets
 	}

@@ -20,11 +20,17 @@ type Manager struct {
 }
 
 func NewManager(cfg *config.Config, local *firewall.Manager) *Manager {
+	var runner Runner = SSHRunner{}
+	if strings.TrimSpace(cfg.RemoteEnforcement.SSHConfigPath) != "" ||
+		strings.TrimSpace(cfg.RemoteEnforcement.SSHKeyPath) != "" ||
+		strings.TrimSpace(cfg.RemoteEnforcement.KnownHostsPath) != "" {
+		runner = ConfiguredSSHRunner{cfg: cfg.RemoteEnforcement}
+	}
 	return &Manager{
 		cfg:    cfg.RemoteEnforcement,
 		dryRun: cfg.DryRun,
 		local:  local,
-		runner: SSHRunner{},
+		runner: runner,
 	}
 }
 
@@ -105,7 +111,7 @@ func (m *Manager) applyRemote(event events.Event, action events.Action) []Target
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), m.cfg.ConnectTimeout)
-		err := m.runner.Run(ctx, target, remoteCommand(action, target, event.ClientIP))
+		err := m.runner.Run(ctx, target, remoteCommand(action, m.cfg, target, event.ClientIP))
 		cancel()
 
 		targetResult := TargetResult{
@@ -126,18 +132,23 @@ func (m *Manager) applyRemote(event events.Event, action events.Action) []Target
 	return results
 }
 
-func remoteCommand(action events.Action, target config.RemoteTarget, ip string) string {
+func remoteCommand(action events.Action, cfg config.RemoteEnforcement, target config.RemoteTarget, ip string) string {
+	commandPrefix := ""
+	if cfg.UseSudo {
+		commandPrefix = "sudo "
+	}
+
 	switch strings.ToLower(strings.TrimSpace(effectiveBackend(target))) {
 	case "nftables", "nft":
 		if action == events.ActionBan {
-			return fmt.Sprintf("nft add element inet xray_ip_limit banned_ips { %s }", ip)
+			return fmt.Sprintf("%snft add element inet xray_ip_limit banned_ips { %s }", commandPrefix, ip)
 		}
-		return fmt.Sprintf("nft delete element inet xray_ip_limit banned_ips { %s }", ip)
+		return fmt.Sprintf("%snft delete element inet xray_ip_limit banned_ips { %s }", commandPrefix, ip)
 	default:
 		if action == events.ActionBan {
-			return fmt.Sprintf("iptables -C XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || iptables -I XRAY_IP_LIMIT_BLOCKED -s %s -j DROP", ip, ip)
+			return fmt.Sprintf("%siptables -C XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || %siptables -I XRAY_IP_LIMIT_BLOCKED -s %s -j DROP", commandPrefix, ip, commandPrefix, ip)
 		}
-		return fmt.Sprintf("iptables -D XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || true", ip)
+		return fmt.Sprintf("%siptables -D XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || true", commandPrefix, ip)
 	}
 }
 

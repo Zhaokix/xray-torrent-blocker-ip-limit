@@ -3,6 +3,7 @@ package distribution
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +51,26 @@ func testLocalFirewall(t *testing.T) *firewall.Manager {
 		t.Fatalf("NewManager returned error: %v", err)
 	}
 	return fw
+}
+
+func TestBuildConfiguredSSHArgs(t *testing.T) {
+	args := buildConfiguredSSHArgs(config.RemoteEnforcement{
+		SSHConfigPath:  "/opt/iptblocker/ssh_config",
+		SSHKeyPath:     "/opt/iptblocker/id_ed25519",
+		KnownHostsPath: "/opt/iptblocker/known_hosts",
+	}, config.RemoteTarget{
+		Name: "edge-1",
+		Host: "198.51.100.10",
+		Port: 2222,
+		User: "iptblocker",
+	}, "echo test")
+
+	joined := strings.Join(args, " ")
+	for _, fragment := range []string{"-p 2222", "-F /opt/iptblocker/ssh_config", "-i /opt/iptblocker/id_ed25519", "iptblocker@198.51.100.10", "echo test"} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("expected ssh args to contain %q, got %v", fragment, args)
+		}
+	}
 }
 
 func TestApplyLocalOnlyUsesLocalFirewall(t *testing.T) {
@@ -104,5 +125,12 @@ func TestApplyLocalAndRemoteReportsPartialFailure(t *testing.T) {
 	}
 	if result.FullySuccessful {
 		t.Fatal("did not expect full success when one remote target fails")
+	}
+}
+
+func TestRemoteCommandSupportsSudo(t *testing.T) {
+	command := remoteCommand(events.ActionBan, config.RemoteEnforcement{UseSudo: true}, config.RemoteTarget{Backend: "iptables"}, "203.0.113.12")
+	if !strings.Contains(command, "sudo iptables") {
+		t.Fatalf("expected sudo iptables command, got %q", command)
 	}
 }

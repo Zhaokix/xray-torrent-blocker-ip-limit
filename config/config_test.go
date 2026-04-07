@@ -54,6 +54,10 @@ remote_enforcement:
   enabled: true
   mode: "local_and_remote"
   connect_timeout: "15s"
+  ssh_config_path: "/opt/iptblocker/ssh_config"
+  ssh_key_path: "/opt/iptblocker/id_ed25519"
+  known_hosts_path: "/opt/iptblocker/known_hosts"
+  use_sudo: true
   targets:
     - name: "edge-1"
       host: "198.51.100.10"
@@ -123,6 +127,18 @@ remote_enforcement:
 	}
 	if cfg.RemoteEnforcement.ConnectTimeout != 15*time.Second {
 		t.Fatalf("expected remote connect timeout 15s, got %s", cfg.RemoteEnforcement.ConnectTimeout)
+	}
+	if cfg.RemoteEnforcement.SSHConfigPath != "/opt/iptblocker/ssh_config" {
+		t.Fatalf("expected ssh_config_path to load, got %q", cfg.RemoteEnforcement.SSHConfigPath)
+	}
+	if cfg.RemoteEnforcement.SSHKeyPath != "/opt/iptblocker/id_ed25519" {
+		t.Fatalf("expected ssh_key_path to load, got %q", cfg.RemoteEnforcement.SSHKeyPath)
+	}
+	if cfg.RemoteEnforcement.KnownHostsPath != "/opt/iptblocker/known_hosts" {
+		t.Fatalf("expected known_hosts_path to load, got %q", cfg.RemoteEnforcement.KnownHostsPath)
+	}
+	if !cfg.RemoteEnforcement.UseSudo {
+		t.Fatal("expected remote use_sudo true")
 	}
 	if len(cfg.RemoteEnforcement.Targets) != 1 || cfg.RemoteEnforcement.Targets[0].Name != "edge-1" {
 		t.Fatalf("expected one remote target edge-1, got %+v", cfg.RemoteEnforcement.Targets)
