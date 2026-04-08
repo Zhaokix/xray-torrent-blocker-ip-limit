@@ -14,6 +14,8 @@ This guide covers the main runtime behavior of `iptblocker` and the most importa
 - `dry_run`: when `true`, no local or remote firewall changes are applied
 - `storage_dir`: local SQLite state directory
 
+When `ban_mode` is `iptables`, `iptblocker` applies local block rules in `raw/PREROUTING`. On Linux it also tries to remove matching conntrack entries through a netlink-based cleanup path before falling back to the `conntrack` CLI.
+
 ## Minimal Example
 
 ```yaml

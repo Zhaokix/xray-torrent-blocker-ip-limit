@@ -11,6 +11,8 @@ When `ban_mode` is `iptables`, `iptblocker` installs its block rules in the `raw
 - `conntrack` available in `PATH` if you want existing connections to be dropped on ban
 - `ssh` available in `PATH` if you want remote enforcement
 
+On Linux, local bans now try to clear existing sessions through a netlink-based conntrack path first and fall back to the `conntrack` CLI when needed.
+
 ## Build
 
 ```bash

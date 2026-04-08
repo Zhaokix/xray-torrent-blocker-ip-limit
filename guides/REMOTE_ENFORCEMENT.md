@@ -109,7 +109,7 @@ EOF
 sudo chmod 440 /etc/sudoers.d/iptblocker
 ```
 
-`iptables` remote enforcement now ensures the `raw/PREROUTING` hook exists on the target and also tries to clear `conntrack` entries for the banned IP. If `conntrack` is unavailable or not permitted, the ban rule is still applied but existing sessions may survive until they expire.
+`iptables` remote enforcement now ensures the `raw/PREROUTING` hook exists on the target and also tries to clear `conntrack` entries for the banned IP through the remote `conntrack` CLI. This is separate from the local Linux netlink-based cleanup path. If remote `conntrack` is unavailable or not permitted, the ban rule is still applied but existing sessions may survive until they expire.
 
 For `nftables` targets:
 
