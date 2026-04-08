@@ -33,6 +33,7 @@ bypass_emails: []
 bypass_processed_usernames: []
 
 # Firewall backend used for local bans: iptables, nftables, or nft.
+# The iptables backend installs block rules in raw/PREROUTING and also tries to clear conntrack entries on ban.
 ban_mode: "iptables"
 
 # Optional webhook notification settings.
@@ -83,5 +84,6 @@ remote_enforcement:
   ssh_config_path: ""
   ssh_key_path: ""
   known_hosts_path: ""
+  # Set use_sudo: true when the remote user is allowed to run iptables/nft/conntrack only via passwordless sudo.
   use_sudo: false
   targets: []

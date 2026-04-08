@@ -130,7 +130,15 @@ func TestApplyLocalAndRemoteReportsPartialFailure(t *testing.T) {
 
 func TestRemoteCommandSupportsSudo(t *testing.T) {
 	command := remoteCommand(events.ActionBan, config.RemoteEnforcement{UseSudo: true}, config.RemoteTarget{Backend: "iptables"}, "203.0.113.12")
-	if !strings.Contains(command, "sudo iptables") {
-		t.Fatalf("expected sudo iptables command, got %q", command)
+	for _, fragment := range []string{
+		"sudo iptables -t raw -S XRAY_IP_LIMIT_BLOCKED",
+		"sudo iptables -t raw -C PREROUTING -j XRAY_IP_LIMIT_BLOCKED",
+		"sudo conntrack -D -s 203.0.113.12",
+		"sudo conntrack -D -d 203.0.113.12",
+		"sudo iptables -t raw -I XRAY_IP_LIMIT_BLOCKED -s 203.0.113.12 -j DROP",
+	} {
+		if !strings.Contains(command, fragment) {
+			t.Fatalf("expected sudo iptables command to contain %q, got %q", fragment, command)
+		}
 	}
 }

@@ -84,6 +84,23 @@ func newBackend(mode string) (Backend, error) {
 }
 
 func conntrackDel(ip string) error {
-	return exec.Command("conntrack", "-D", "-s", ip).Run()
+	var errs []string
+	for _, direction := range []string{"-s", "-d"} {
+		cmd := exec.Command("conntrack", "-D", direction, ip)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			text := strings.TrimSpace(string(output))
+			if text != "" && strings.Contains(text, "0 flow entries have been deleted") {
+				continue
+			}
+			if text == "" {
+				text = err.Error()
+			}
+			errs = append(errs, fmt.Sprintf("%s: %s", direction, text))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf(strings.Join(errs, "; "))
 }
-

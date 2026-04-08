@@ -145,10 +145,22 @@ func remoteCommand(action events.Action, cfg config.RemoteEnforcement, target co
 		}
 		return fmt.Sprintf("%snft delete element inet xray_ip_limit banned_ips { %s }", commandPrefix, ip)
 	default:
+		ensureSetup := fmt.Sprintf(
+			"%siptables -t raw -S XRAY_IP_LIMIT_BLOCKED >/dev/null 2>&1 || %siptables -t raw -N XRAY_IP_LIMIT_BLOCKED; "+
+				"%siptables -t raw -C PREROUTING -j XRAY_IP_LIMIT_BLOCKED >/dev/null 2>&1 || %siptables -t raw -I PREROUTING 1 -j XRAY_IP_LIMIT_BLOCKED",
+			commandPrefix, commandPrefix, commandPrefix, commandPrefix,
+		)
 		if action == events.ActionBan {
-			return fmt.Sprintf("%siptables -C XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || %siptables -I XRAY_IP_LIMIT_BLOCKED -s %s -j DROP", commandPrefix, ip, commandPrefix, ip)
+			conntrackCleanup := fmt.Sprintf(
+				"%sconntrack -D -s %s >/dev/null 2>&1 || true; %sconntrack -D -d %s >/dev/null 2>&1 || true",
+				commandPrefix, ip, commandPrefix, ip,
+			)
+			return fmt.Sprintf(
+				"%s; %s; %siptables -t raw -C XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || %siptables -t raw -I XRAY_IP_LIMIT_BLOCKED -s %s -j DROP",
+				ensureSetup, conntrackCleanup, commandPrefix, ip, commandPrefix, ip,
+			)
 		}
-		return fmt.Sprintf("%siptables -D XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || true", commandPrefix, ip)
+		return fmt.Sprintf("%s; %siptables -t raw -D XRAY_IP_LIMIT_BLOCKED -s %s -j DROP >/dev/null 2>&1 || true", ensureSetup, commandPrefix, ip)
 	}
 }
 

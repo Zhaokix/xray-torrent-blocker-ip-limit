@@ -9,6 +9,8 @@ import (
 
 const (
 	ipTablesChain = "XRAY_IP_LIMIT_BLOCKED"
+	ipTablesTable = "raw"
+	ipTablesHook  = "PREROUTING"
 )
 
 var ipTablesRulePattern = regexp.MustCompile(`-A\s+` + ipTablesChain + `\s+-s\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(?:/32)?\s+-j\s+DROP`)
@@ -25,13 +27,13 @@ func (b *ipTablesBackend) Name() string {
 
 func (b *ipTablesBackend) EnsureSetup() error {
 	if !b.chainExists() {
-		if err := runCommand("iptables", "-w", "-N", ipTablesChain); err != nil {
+		if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-N", ipTablesChain); err != nil {
 			return fmt.Errorf("create iptables chain: %w", err)
 		}
 	}
 
-	if err := runCommand("iptables", "-w", "-C", "INPUT", "-j", ipTablesChain); err != nil {
-		if err := runCommand("iptables", "-w", "-I", "INPUT", "1", "-j", ipTablesChain); err != nil {
+	if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-C", ipTablesHook, "-j", ipTablesChain); err != nil {
+		if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-I", ipTablesHook, "1", "-j", ipTablesChain); err != nil {
 			return fmt.Errorf("add iptables jump rule: %w", err)
 		}
 	}
@@ -44,11 +46,11 @@ func (b *ipTablesBackend) Ban(ip string) error {
 		return err
 	}
 
-	if err := runCommand("iptables", "-w", "-C", ipTablesChain, "-s", ip, "-j", "DROP"); err == nil {
+	if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-C", ipTablesChain, "-s", ip, "-j", "DROP"); err == nil {
 		return nil
 	}
 
-	if err := runCommand("iptables", "-w", "-A", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
+	if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-A", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
 		return fmt.Errorf("block ip with iptables: %w", err)
 	}
 
@@ -60,11 +62,11 @@ func (b *ipTablesBackend) Unban(ip string) error {
 		return err
 	}
 
-	if err := runCommand("iptables", "-w", "-C", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
+	if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-C", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
 		return nil
 	}
 
-	if err := runCommand("iptables", "-w", "-D", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
+	if err := runCommand("iptables", "-w", "-t", ipTablesTable, "-D", ipTablesChain, "-s", ip, "-j", "DROP"); err != nil {
 		return fmt.Errorf("unblock ip with iptables: %w", err)
 	}
 
@@ -76,7 +78,7 @@ func (b *ipTablesBackend) ListBlocked() (map[string]struct{}, error) {
 		return nil, err
 	}
 
-	cmd := exec.Command("iptables", "-w", "-S", ipTablesChain)
+	cmd := exec.Command("iptables", "-w", "-t", ipTablesTable, "-S", ipTablesChain)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("list iptables rules: %w", err)
@@ -94,7 +96,7 @@ func (b *ipTablesBackend) ListBlocked() (map[string]struct{}, error) {
 }
 
 func (b *ipTablesBackend) chainExists() bool {
-	cmd := exec.Command("iptables", "-w", "-S", ipTablesChain)
+	cmd := exec.Command("iptables", "-w", "-t", ipTablesTable, "-S", ipTablesChain)
 	return cmd.Run() == nil
 }
 
@@ -110,4 +112,3 @@ func runCommand(name string, args ...string) error {
 	}
 	return nil
 }
-

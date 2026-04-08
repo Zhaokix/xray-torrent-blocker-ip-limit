@@ -2,6 +2,8 @@
 
 `iptblocker` is a local-first daemon that watches the Xray access log, tracks unique client IPs per subscription identifier inside a sliding window, and applies firewall bans when the configured policy is violated. It can also ban on torrent-tagged log events when Xray is configured to mark bittorrent traffic with a dedicated tag.
 
+When `ban_mode` is `iptables`, `iptblocker` installs its block rules in the `raw` table and hooks them from `PREROUTING` to match the earlier-drop model used by dedicated torrent blockers.
+
 ## Requirements
 
 - Linux host with Xray access logs enabled
@@ -131,7 +133,7 @@ journalctl -u iptblocker -f
 ```bash
 systemctl status iptblocker
 journalctl -u iptblocker -f
-iptables -S XRAY_IP_LIMIT_BLOCKED
+iptables -t raw -S XRAY_IP_LIMIT_BLOCKED
 nft list set inet xray_ip_limit banned_ips
 ```
 
